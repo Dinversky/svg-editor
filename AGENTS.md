@@ -40,7 +40,9 @@ When an update is necessary, edit only the affected sections; never rewrite unre
 
 If no listed fact changes, do not touch `README.md`; report `README.md: no update required — <reason>`.
 
-`doc/README.md` is not subject to this gate. Its process log, consistency check, and quality assurance sections must be updated for every implementation task with actual, verified results.
+`doc/README.md` is not subject to this gate. When a task modifies files under `doc/`, read and follow
+`doc/AGENTS.md` in addition to this root file.
+
 
 ## 3. Architecture Rules
 

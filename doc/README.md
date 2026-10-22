@@ -86,7 +86,7 @@ commands ..> model : planned
 - `npm test`：先构建，再运行 `node --test test/cli.test.mjs`；12 个测试通过，0 失败。
 - 手工验证：执行 `npm run cli`，完成 `init → create rect → tree → save → exit`；输出 `canvas 800x600 created`、`rect#r1 created`、tree 条目和 `saved to ... (1 element)`。生成的 SVG 包含 XML 声明、`<svg width="800" height="600" viewBox="0 0 800 600">` 和 `<rect id="r1" x="100" y="120" width="200" height="80" fill="blue"/>`。
 - 浏览器验收步骤：运行 `npm run cli`，输入 README 中的流程并生成 `demo.svg`，用 Chrome 或 Edge 打开；应看到左上角坐标 `(100,120)`、大小 `200×80` 的蓝色矩形。本次未在浏览器中实际打开，只验证了生成的 SVG 文本。
-- Git：本轮开始时 `main` 与 `origin/main` 均指向 `d67bde2`；本轮未创建提交或标签，工作区变更需在用户确认后提交。
+
 
 ## 未完成事项
 
@@ -95,4 +95,4 @@ commands ..> model : planned
 - Command 模式、Composite 容器行为、undo/redo 历史。
 - `save` 无文件名且无来源路径时明确报错；`read` 实现后再接入“保存到读入路径”。
 - 参数按空白分割，尚不支持带空格的引号参数；本阶段 rect 参数不受影响，含空格路径暂不支持。
-- 本轮未提交 Git；`final` 标签未创建。
+
