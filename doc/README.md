@@ -12,7 +12,7 @@
 | `src/io/`       | 负责 SVG 文件读取、解析、序列化和保存。         |
 | `test/`         | 保存自动化测试。                       |
 
-当前 Task 1 只建立入口和配置；业务模块将在后续小步中按需求实现。
+当前迭代建立了可交互 CLI：`SvgEditorCli` 负责欢迎信息、命令读取和 `help`/`exit` 处理；图形、命令、SVG I/O 和 undo/redo 尚未实现。
 
 ### 依赖方向
 
@@ -49,25 +49,28 @@ test ..> io
 
 ## 过程记录
 
-- 检查结果：目录中只有 `AGENTS.md`、`Task1.md` 和作业原文，没有已有源码、Node 配置或 Git 元数据。
-- 根据作业原文与 `AGENTS.md`，本次只建立可运行骨架，不实现图形编辑、SVG 读写或 undo/redo。
-- 选择 TypeScript 严格模式，并使用 npm scripts 提供类型检查、构建和 CLI 启动入口。
-- 待后续记录：第一条业务命令实现、测试结果及发现的问题。
+- 检查结果：Node.js v22.22.2、npm 10.9.7，依赖已安装；Git 仓库已有 `init` 提交和 `origin` 远程，工作区保留了未提交的 `AGENTS.md` 规则修改。
+- 根据作业原文与 `AGENTS.md`，本次只建立可交互骨架，不实现图形编辑、SVG 读写或 undo/redo。
+- 将原先只打印帮助文本的入口改为 `SvgEditorCli` 交互循环，使用 Node `readline` 逐行读取；`main.ts` 只负责创建并启动该类。
+- 增加 `@types/node`，使 TypeScript 能检查 Node 内置模块和 `process`。
+- 增加 `npm run cli` 启动脚本和 `node:test` 集成测试；测试通过子进程输入 `help`、未知命令和 `exit`，检查输出与退出码。
+- 待后续记录：第一条 SVG 编辑业务命令实现、测试结果及发现的问题。
 
 ## 一致性自查
 
-- 模块划分：当前实际已建立 `src/cli/`；`model`、`commands`、`io` 和 `test` 目录尚未因空目录要求而创建，后续添加对应实现时创建。
-- 依赖方向：当前入口只使用标准输出，没有业务依赖；暂无违反依赖方向的代码。
-- 待完成：随着业务模块加入，逐次更新本节并检查实际导入关系。
+- 模块划分：`src/cli/` 已有 `main.ts`（入口）和 `SvgEditorCli.ts`（交互循环）；`test/` 已有 `cli.test.mjs`；`model`、`commands`、`io` 尚未创建。
+- 依赖方向：CLI 只依赖 Node 内置 `readline`，未导入模型、命令或 I/O 层，符合当前依赖方向。
+- 文档一致性：README 的启动命令、当前范围，与本文件的记录、`package.json`、源码和测试一致。
 
 ## 质量保证
 
-- 已配置 `npm run typecheck` 和 `npm run build`，安装依赖后执行。
-- 已配置 `npm start`，用于确认编译后的 CLI 可以正常启动并退出。
-- 本任务尚未配置测试框架，也没有业务行为可测试；首个业务切片实现后再引入轻量测试方案并记录实际结果。
-- 尚未创建 Git 仓库，因此本任务无法执行提交、push 或 Git diff 验证；这不是已通过的验证项。
+- 环境：Node.js v22.22.2，npm 10.9.7。
+- `npm run typecheck`：通过，无类型错误。
+- `npm test`：先构建，再运行 `node --test test/cli.test.mjs`；1 个测试通过，0 失败。
+- 手工验证：以管道输入 `help`、`exit` 执行 `npm run cli`，输出欢迎信息、帮助列表和 `Goodbye.`，进程正常退出。
+- 未创建 Git 提交；按用户要求等待检查确认。
 
 ## 未完成事项
 
 - SVG 图形模型、命令分发、Composite、Command、SVG I/O 和 undo/redo 尚未实现。
-- 尚未配置 Git 远程仓库，无法提交或 push；不能猜测远程地址或分支。
+- 按用户要求，本轮变更尚未提交；等待用户检查和确认后再指导提交。

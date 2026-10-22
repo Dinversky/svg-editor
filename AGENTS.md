@@ -17,6 +17,31 @@ Do not implement features that are explicitly outside the current phase.
 - Report changed files, commands executed, results, and remaining issues.
 - Do not create Git commits unless explicitly asked.
 
+### 2.1 README Update Gate
+
+Root `README.md` must be updated in the same task if and only if the task changes at least one of these externally visible facts:
+
+1. CLI behavior: commands, parameters, syntax, output, or error text.
+2. Build, run, or setup workflow: npm scripts, dependencies, Node version, or entry point.
+3. Repository layout or layer responsibilities presented to users or developers.
+4. Current phase scope: implemented versus not-yet-implemented features.
+5. User-facing limitations or known behavior that affects use.
+
+An update is necessary only when leaving `README.md` unchanged would make a documented statement false or misleading.
+
+Root `README.md` must not be updated for:
+
+- Internal refactors, private classes, algorithms, or implementation details.
+- Tests, comments, formatting, or renames, unless they change a fact listed above.
+- Temporary experiments or work outside the current phase.
+- Content that belongs only in `doc/README.md`.
+
+When an update is necessary, edit only the affected sections; never rewrite unrelated content. Keep root `README.md` short and user-facing: purpose, current scope, setup/run commands, usage, and limitations. Architecture, process log, consistency checks, and quality assurance belong in `doc/README.md`.
+
+If no listed fact changes, do not touch `README.md`; report `README.md: no update required — <reason>`.
+
+`doc/README.md` is not subject to this gate. Its process log, consistency check, and quality assurance sections must be updated for every implementation task with actual, verified results.
+
 ## 3. Architecture Rules
 
 - `src/model/`: domain objects and document state.
@@ -65,6 +90,7 @@ For each task, report:
 
 1. What changed.
 2. Why the change is needed.
-3. Tests and type checks run.
-4. Results and known limitations.
-5. Suggested next task.
+3. README decision: sections updated, or `no update required` with the reason.
+4. Tests and type checks run.
+5. Results and known limitations.
+6. Suggested next task.

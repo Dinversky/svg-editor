@@ -1,27 +1,44 @@
 # SVG Editor
 
-This repository contains the TypeScript CLI skeleton for Lab1 Phase 1.
+A TypeScript command-line SVG editor, developed incrementally for Lab1.
 
 ## Current scope
 
-Task 1 establishes the buildable project structure and CLI entry point. SVG
-editing commands, shape models, SVG I/O, and undo/redo are intentionally not
-implemented yet.
+This iteration provides a minimal interactive CLI. It prints a welcome
+message, reads commands from standard input, supports `help` and `exit`, and
+reports unknown commands. Shape models, editing commands, SVG I/O, and
+undo/redo are intentionally not implemented yet.
+
+## Requirements
+
+- Node.js 22 or later (verified with Node.js 22.22.2)
+- npm
 
 ## Development
 
 ```text
 npm install
 npm run typecheck
-npm run build
-npm start
+npm test
+npm run cli
 ```
+
+`npm run cli` builds the project and starts the interactive editor.
+`npm start` starts the previously built CLI without rebuilding.
+
+## Usage
+
+```text
+npm run cli
+```
+
+Then enter `help` to list commands or `exit` to quit.
 
 The source layout follows the assignment architecture:
 
-- `src/cli/` — command-line entry point and input handling.
-- `src/model/` — SVG domain objects and document state.
-- `src/commands/` — editable commands and undo/redo.
-- `src/io/` — SVG parsing, serialization, and file I/O.
-- `test/` — automated tests when the first business slice is implemented.
+- `src/cli/` — command-line entry point, interactive loop, and input handling.
+- `src/model/` — SVG domain objects and document state (planned).
+- `src/commands/` — editable commands and undo/redo (planned).
+- `src/io/` — SVG parsing, serialization, and file I/O (planned).
+- `test/` — automated CLI integration tests.
 - `doc/README.md` — architecture and development record.
