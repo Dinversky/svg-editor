@@ -7,25 +7,11 @@ export class SvgSerializer {
       `<svg xmlns="http://www.w3.org/2000/svg" width="${canvas.width}" height="${canvas.height}" viewBox="0 0 ${canvas.width} ${canvas.height}">`,
     ];
 
-    for (const rectangle of canvas.shapes) {
-      const fill = rectangle.fill === undefined
-        ? ''
-        : ` fill="${this.escapeAttribute(rectangle.fill)}"`;
-
-      lines.push(
-        `  <rect id="${this.escapeAttribute(rectangle.id)}" x="${rectangle.x}" y="${rectangle.y}" width="${rectangle.width}" height="${rectangle.height}"${fill}/>`,
-      );
+    for (const shape of canvas.shapes) {
+      lines.push(`  ${shape.toSvgElement()}`);
     }
 
     lines.push('</svg>');
     return `${lines.join('\n')}\n`;
-  }
-
-  private escapeAttribute(value: string): string {
-    return value
-      .replaceAll('&', '&amp;')
-      .replaceAll('"', '&quot;')
-      .replaceAll('<', '&lt;')
-      .replaceAll('>', '&gt;');
   }
 }

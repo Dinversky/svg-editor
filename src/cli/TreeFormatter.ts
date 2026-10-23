@@ -11,10 +11,7 @@ export class TreeFormatter {
 
     canvas.shapes.forEach((shape, index) => {
       const branch = index === canvas.shapes.length - 1 ? '└──' : '├──';
-      const fill = shape.fill === undefined ? '' : ` fill=${shape.fill}`;
-      lines.push(
-        `${branch} rect#${shape.id} x=${shape.x} y=${shape.y} w=${shape.width} h=${shape.height}${fill}`,
-      );
+      lines.push(`${branch} ${shape.describe()}`);
     });
 
     return lines.join('\n');

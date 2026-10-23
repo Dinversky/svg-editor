@@ -1,5 +1,6 @@
-export class RectangleShape {
-  private readonly shapeId: string;
+import { Shape } from './Shape.js';
+
+export class Rect extends Shape {
   private readonly positionX: number;
   private readonly positionY: number;
   private readonly shapeWidth: number;
@@ -14,9 +15,7 @@ export class RectangleShape {
     height: number,
     fill?: string,
   ) {
-    if (id.length === 0) {
-      throw new Error('rectangle id must not be empty');
-    }
+    super(id);
 
     if (!Number.isFinite(x) || !Number.isFinite(y)) {
       throw new Error('rectangle coordinates must be finite numbers');
@@ -26,16 +25,11 @@ export class RectangleShape {
       throw new Error('rectangle width and height must be positive');
     }
 
-    this.shapeId = id;
     this.positionX = x;
     this.positionY = y;
     this.shapeWidth = width;
     this.shapeHeight = height;
     this.shapeFill = fill;
-  }
-
-  public get id(): string {
-    return this.shapeId;
   }
 
   public get x(): number {
@@ -56,5 +50,18 @@ export class RectangleShape {
 
   public get fill(): string | undefined {
     return this.shapeFill;
+  }
+
+  public describe(): string {
+    const fill = this.shapeFill === undefined ? '' : ` fill=${this.shapeFill}`;
+    return `rect#${this.id} x=${this.positionX} y=${this.positionY} w=${this.shapeWidth} h=${this.shapeHeight}${fill}`;
+  }
+
+  public toSvgElement(): string {
+    const fill = this.shapeFill === undefined
+      ? ''
+      : ` fill="${this.escapeAttribute(this.shapeFill)}"`;
+
+    return `<rect id="${this.escapeAttribute(this.id)}" x="${this.positionX}" y="${this.positionY}" width="${this.shapeWidth}" height="${this.shapeHeight}"${fill}/>`;
   }
 }

@@ -1,10 +1,14 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
+
+const require = createRequire(import.meta.url);
+const { Rect } = require('../dist/model/Rect.js');
 
 const cliPath = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -282,4 +286,98 @@ test('completes init -> create rect -> tree -> save', async (t) => {
     svg,
     /<rect id="r1" x="100" y="120" width="200" height="80" fill="blue"\/>/,
   );
+});
+
+test('Rect stores id, geometry, and optional fill', () => {
+  const filled = new Rect('r1', 1.5, -2.5, 30.25, 40.5, 'blue');
+  assert.equal(filled.id, 'r1');
+  assert.equal(filled.x, 1.5);
+  assert.equal(filled.y, -2.5);
+  assert.equal(filled.width, 30.25);
+  assert.equal(filled.height, 40.5);
+  assert.equal(filled.fill, 'blue');
+
+  const unfilled = new Rect('r2', 0, 0, 10, 10);
+  assert.equal(unfilled.fill, undefined);
+});
+
+test('Rect rejects empty ids and invalid geometry', () => {
+  assert.throws(() => new Rect('', 0, 0, 10, 10), /shape id must not be empty/);
+
+  for (const [x, y] of [[NaN, 0], [0, NaN], [Infinity, 0], [0, -Infinity]]) {
+    assert.throws(
+      () => new Rect('r1', x, y, 10, 10),
+      /rectangle coordinates must be finite numbers/,
+    );
+  }
+
+  for (const [width, height] of [
+    [NaN, 10],
+    [10, NaN],
+    [Infinity, 10],
+    [10, -Infinity],
+    [0, 10],
+    [10, 0],
+    [-1, 10],
+    [10, -1],
+  ]) {
+    assert.throws(
+      () => new Rect('r1', 0, 0, width, height),
+      /rectangle width and height must be positive/,
+    );
+  }
+});
+
+test('Rect.describe matches the tree attribute format', () => {
+  assert.equal(
+    new Rect('r1', 100, 120, 200, 80, 'blue').describe(),
+    'rect#r1 x=100 y=120 w=200 h=80 fill=blue',
+  );
+  assert.equal(
+    new Rect('r2', 1.5, 2.5, 3, 4).describe(),
+    'rect#r2 x=1.5 y=2.5 w=3 h=4',
+  );
+});
+
+test('Rect.toSvgElement preserves attribute order, optional fill, and escaping', () => {
+  assert.equal(
+    new Rect('r1', 100, 120, 200, 80, 'blue').toSvgElement(),
+    '<rect id="r1" x="100" y="120" width="200" height="80" fill="blue"/>',
+  );
+  assert.equal(
+    new Rect('r2', 1.5, 2.5, 3, 4).toSvgElement(),
+    '<rect id="r2" x="1.5" y="2.5" width="3" height="4"/>',
+  );
+  assert.equal(
+    new Rect('a"&<>', 1, 2, 3, 4, 'red&"<>').toSvgElement(),
+    '<rect id="a&quot;&amp;&lt;&gt;" x="1" y="2" width="3" height="4" fill="red&amp;&quot;&lt;&gt;"/>',
+  );
+});
+
+test('preserves negative and out-of-canvas rectangle geometry', async (t) => {
+  const tempDir = createTempDir(t);
+  const filePath = path.join(tempDir, 'outside.svg');
+
+  const result = await runCli(
+    'init 100 100\n' +
+    'create rect negative -10 -20 30 40\n' +
+    'create rect partial 50 50 100 100\n' +
+    'create rect outside 200 200 10 10\n' +
+    'tree\n' +
+    `save ${filePath}\n` +
+    'exit\n',
+  );
+
+  assert.equal(result.code, 0);
+  const lines = withoutPrompt(result.stdout).split('\n');
+  const treeIndex = lines.indexOf('svg (100x100)');
+  assert.notEqual(treeIndex, -1);
+  assert.equal(lines[treeIndex + 1], '├── rect#negative x=-10 y=-20 w=30 h=40');
+  assert.equal(lines[treeIndex + 2], '├── rect#partial x=50 y=50 w=100 h=100');
+  assert.equal(lines[treeIndex + 3], '└── rect#outside x=200 y=200 w=10 h=10');
+
+  const svg = readFileSync(filePath, 'utf8');
+  assert.match(svg, /<rect id="negative" x="-10" y="-20" width="30" height="40"\/>/);
+  assert.match(svg, /<rect id="partial" x="50" y="50" width="100" height="100"\/>/);
+  assert.match(svg, /<rect id="outside" x="200" y="200" width="10" height="10"\/>/);
 });

@@ -1,9 +1,9 @@
-import { RectangleShape } from './RectangleShape.js';
+import { Shape } from './Shape.js';
 
 export class Canvas {
   private readonly canvasWidth: number;
   private readonly canvasHeight: number;
-  private readonly rectangles: RectangleShape[] = [];
+  private readonly shapeList: Shape[] = [];
 
   constructor(width: number, height: number) {
     if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
@@ -22,20 +22,20 @@ export class Canvas {
     return this.canvasHeight;
   }
 
-  public get shapes(): readonly RectangleShape[] {
-    return this.rectangles;
+  public get shapes(): readonly Shape[] {
+    return this.shapeList;
   }
 
   public hasShape(id: string): boolean {
-    return this.rectangles.some((shape) => shape.id === id);
+    return this.shapeList.some((shape) => shape.id === id);
   }
 
-  public addShape(shape: RectangleShape): boolean {
+  public addShape(shape: Shape): boolean {
     if (this.hasShape(shape.id)) {
       return false;
     }
 
-    this.rectangles.push(shape);
+    this.shapeList.push(shape);
     return true;
   }
 }

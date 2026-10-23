@@ -175,8 +175,8 @@ export class SvgEditorCli {
       return;
     }
 
-    const rectangle = this.shapeFactory.createRectangle(id, x, y, width, height, args[6]);
-    document.addShape(rectangle);
+    const shape = this.shapeFactory.createRect(id, x, y, width, height, args[6]);
+    document.addShape(shape);
     console.log(`rect#${id} created`);
   }
 

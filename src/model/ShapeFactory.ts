@@ -1,18 +1,18 @@
-import { RectangleShape } from './RectangleShape.js';
+import { Rect } from './Rect.js';
 
 export class ShapeFactory {
   public supports(type: string): boolean {
     return type === 'rect';
   }
 
-  public createRectangle(
+  public createRect(
     id: string,
     x: number,
     y: number,
     width: number,
     height: number,
     fill?: string,
-  ): RectangleShape {
-    return new RectangleShape(id, x, y, width, height, fill);
+  ): Rect {
+    return new Rect(id, x, y, width, height, fill);
   }
 }
