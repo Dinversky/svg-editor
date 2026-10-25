@@ -16,8 +16,9 @@ implemented commands are:
 Repeating `init` replaces the current document. Because `read` is not
 implemented yet, a newly initialized document has no source path; `save`
 without a filename therefore reports an error. Other shape types, containers,
-editing commands, Command, Composite, undo/redo, and the `box` plugin are not
-implemented.
+concrete editing commands, Composite, undo/redo, and the `box` plugin are not
+implemented. The `Command` interface and `CommandRegistry` foundation exist,
+but no concrete command classes or command history are implemented.
 
 ## Requirements
 
@@ -75,7 +76,7 @@ The source layout follows the assignment architecture:
 
 - `src/cli/` — entry point, interactive loop, tokenization, command parsing, and tree output.
 - `src/model/` — `Shape`, `Rect`, `Document`, container/ID management, and `ShapeFactory`.
-- `src/commands/` — editable commands and undo/redo (planned).
+- `src/commands/` — `Command` interface and `CommandRegistry` foundation; concrete edit commands and undo/redo are planned.
 - `src/io/` — SVG serialization and file writing.
-- `test/` — automated CLI, tokenizer, and model tests.
+- `test/` — automated CLI, tokenizer, model, and command-registry tests.
 - `doc/README.md` — architecture and development record.
