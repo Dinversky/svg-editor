@@ -3,10 +3,12 @@ import { Document } from '../model/Document.js';
 import { ShapeFactory } from '../model/ShapeFactory.js';
 import { SvgFileWriter } from '../io/SvgFileWriter.js';
 import { SvgSerializer } from '../io/SvgSerializer.js';
+import { Tokenizer } from './Tokenizer.js';
 import { TreeFormatter } from './TreeFormatter.js';
 
 export class SvgEditorCli {
   private readonly lineReader: Interface;
+  private readonly tokenizer = new Tokenizer();
   private readonly treeFormatter = new TreeFormatter();
   private readonly shapeFactory = new ShapeFactory();
   private readonly svgSerializer = new SvgSerializer();
@@ -38,15 +40,15 @@ export class SvgEditorCli {
   }
 
   private handleLine(line: string): void {
-    const command = line.trim();
-
-    if (command === '') {
-      this.lineReader.prompt();
-      return;
-    }
-
     try {
-      this.execute(command);
+      const tokens = this.tokenizer.tokenize(line);
+
+      if (tokens.length === 0) {
+        this.lineReader.prompt();
+        return;
+      }
+
+      this.execute(tokens);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.log(`error: ${message}`);
@@ -57,8 +59,7 @@ export class SvgEditorCli {
     }
   }
 
-  private execute(command: string): void {
-    const tokens = command.split(/\s+/);
+  private execute(tokens: string[]): void {
     const name = tokens[0];
     const args = tokens.slice(1);
 

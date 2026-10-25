@@ -506,3 +506,93 @@ test('removing a shape preserves the order and index of the remaining shapes', (
   assert.equal(second.parent, null);
   assert.equal(third.parent, document.root);
 });
+
+test('ignores blank lines and full-line comments', async () => {
+  const result = await runCli(
+    '\n' +
+    '# this is a comment\n' +
+    '   \n' +
+    'init 100 100\n' +
+    'tree\n' +
+    'exit\n',
+  );
+
+  assert.equal(result.code, 0);
+  assert.match(result.stdout, /canvas 100x100 created/);
+  assert.match(result.stdout, /svg \(100x100\)/);
+  assert.doesNotMatch(result.stdout, /error:/);
+});
+
+test('does not treat #fff in create rect as an inline comment', async () => {
+  const result = await runCli(
+    'init\n' +
+    'create rect r1 0 0 10 10 #fff\n' +
+    'tree\n' +
+    'exit\n',
+  );
+
+  assert.equal(result.code, 0);
+  assert.match(result.stdout, /rect#r1 created/);
+  assert.match(result.stdout, /rect#r1 x=0 y=0 w=10 h=10 fill=#fff/);
+  assert.doesNotMatch(result.stdout, /error:/);
+});
+
+test('saves to a quoted file path containing spaces', async (t) => {
+  const tempDir = createTempDir(t);
+  const filePath = path.join(tempDir, 'my drawing.svg');
+
+  const result = await runCli(
+    'init\n' +
+    'create rect r1 0 0 10 10\n' +
+    `save "${filePath}"\n` +
+    'exit\n',
+  );
+
+  assert.equal(result.code, 0);
+  assert.ok(result.stdout.includes(`saved to ${filePath} (1 element)`));
+
+  const svg = readFileSync(filePath, 'utf8');
+  assert.match(svg, /<rect id="r1" x="0" y="0" width="10" height="10"\/>/);
+});
+
+test('reports an unclosed quote and continues with later commands', async () => {
+  const result = await runCli(
+    'init\n' +
+    'save "unfinished.svg\n' +
+    'create rect r1 0 0 10 10\n' +
+    'tree\n' +
+    'exit\n',
+  );
+
+  assert.equal(result.code, 0);
+  assert.match(result.stdout, /error: unclosed double quote/);
+  assert.match(result.stdout, /rect#r1 created/);
+  assert.match(result.stdout, /rect#r1 x=0 y=0 w=10 h=10/);
+});
+
+test('reports invalid quote syntax and continues with later commands', async () => {
+  const result = await runCli(
+    'init\n' +
+    'save "a"b\n' +
+    'create rect r1 0 0 10 10\n' +
+    'tree\n' +
+    'exit\n',
+  );
+
+  assert.equal(result.code, 0);
+  assert.match(result.stdout, /error: invalid quote syntax/);
+  assert.match(result.stdout, /rect#r1 created/);
+});
+
+test('keeps unquoted command parsing unchanged', async () => {
+  const result = await runCli(
+    'init 800 600\n' +
+    'create rect r1 100 120 200 80 blue\n' +
+    'tree\n' +
+    'exit\n',
+  );
+
+  assert.equal(result.code, 0);
+  assert.match(result.stdout, /canvas 800x600 created/);
+  assert.match(result.stdout, /rect#r1 x=100 y=120 w=200 h=80 fill=blue/);
+});
