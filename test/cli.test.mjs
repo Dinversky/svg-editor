@@ -8,6 +8,7 @@ import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 const require = createRequire(import.meta.url);
+const { Circle } = require('../dist/model/Circle.js');
 const { Document } = require('../dist/model/Document.js');
 const { Rect } = require('../dist/model/Rect.js');
 
@@ -91,6 +92,7 @@ test('prints the exact banner, handles help, unknown commands, and exits', async
   assert.doesNotMatch(result.stdout, /Welcome to SVG Editor CLI/);
   assert.doesNotMatch(result.stdout, /Type "help" for available commands/);
   assert.match(result.stdout, /create rect <id> <x> <y> <w> <h> \[fill\]/);
+  assert.match(result.stdout, /create circle <id> <cx> <cy> <r> \[fill\]/);
   assert.match(result.stdout, /^error: unknown command: unknown$/m);
   assert.doesNotMatch(result.stdout, /error: error:/);
   assert.doesNotMatch(result.stdout, /svg> /);
@@ -242,6 +244,86 @@ test('creates rectangles and shows them in insertion order', async () => {
   assert.equal(lines[treeIndex + 2], '└── rect#r2 x=10.5 y=20.5 w=30 h=40');
 });
 
+test('creates circles and serializes them in document order', async (t) => {
+  const tempDir = createTempDir(t);
+  const filePath = path.join(tempDir, 'shapes.svg');
+
+  const result = await runCli(
+    'init 400 300\n' +
+    'create rect r1 0 0 10 10\n' +
+    'create circle c1 100 100 20 red\n' +
+    'create circle c2 50.5 60.5 5\n' +
+    'tree\n' +
+    `save ${filePath}\n` +
+    'exit\n',
+  );
+
+  assert.equal(result.code, 0);
+  assert.match(result.stdout, /circle#c1 created/);
+  assert.match(result.stdout, /circle#c2 created/);
+  assert.ok(result.stdout.includes(`saved to ${filePath} (3 elements)`));
+
+  const lines = withoutPrompt(result.stdout).split('\n');
+  const treeIndex = lines.indexOf('svg (400x300)');
+  assert.notEqual(treeIndex, -1);
+  assert.equal(lines[treeIndex + 1], '├── rect#r1 x=0 y=0 w=10 h=10');
+  assert.equal(lines[treeIndex + 2], '├── circle#c1 cx=100 cy=100 r=20 fill=red');
+  assert.equal(lines[treeIndex + 3], '└── circle#c2 cx=50.5 cy=60.5 r=5');
+
+  const expectedSvg = [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300" viewBox="0 0 400 300">',
+    '  <rect id="r1" x="0" y="0" width="10" height="10"/>',
+    '  <circle id="c1" cx="100" cy="100" r="20" fill="red"/>',
+    '  <circle id="c2" cx="50.5" cy="60.5" r="5"/>',
+    '</svg>',
+    '',
+  ].join('\n');
+
+  assert.equal(readFileSync(filePath, 'utf8'), expectedSvg);
+});
+
+test('rejects invalid circles and duplicate IDs without changing the document', async () => {
+  const result = await runCli(
+    'init\n' +
+    'create rect keep 0 0 10 10\n' +
+    'create circle c1 10 20 5 blue\n' +
+    'create circle c1 30 40 6 red\n' +
+    'create circle zero 10 20 0\n' +
+    'create circle negative 10 20 -1\n' +
+    'create circle bad-cx abc 20 5\n' +
+    'create circle bad-cy 10 abc 5\n' +
+    'create circle bad-r 10 20 abc\n' +
+    'create circle missing 10 20\n' +
+    'create circle extra 10 20 5 red extra\n' +
+    'tree\n' +
+    'exit\n',
+  );
+
+  assert.equal(result.code, 0);
+  assert.match(result.stdout, /error: id already exists: c1/);
+  assert.equal(
+    (result.stdout.match(/error: radius must be positive/g) ?? []).length,
+    2,
+  );
+  assert.match(result.stdout, /error: invalid number for cx: abc/);
+  assert.match(result.stdout, /error: invalid number for cy: abc/);
+  assert.match(result.stdout, /error: invalid number for r: abc/);
+  assert.equal(
+    (result.stdout.match(/error: usage: create circle/g) ?? []).length,
+    2,
+  );
+
+  const lines = result.stdout.split('\n');
+  assert.ok(lines.includes('├── rect#keep x=0 y=0 w=10 h=10'));
+  assert.ok(lines.includes('└── circle#c1 cx=10 cy=20 r=5 fill=blue'));
+  assert.equal(
+    lines.filter((line) => line.startsWith('├──') || line.startsWith('└──')).length,
+    2,
+  );
+  assert.doesNotMatch(result.stdout, /circle#c1 cx=30/);
+});
+
 test('rejects duplicate IDs without changing the document', async () => {
   const result = await runCli(
     'init\n' +
@@ -282,7 +364,7 @@ test('rejects invalid geometry and missing arguments without mutation', async ()
     'create rect bad-coordinate abc 0 10 10\n' +
     'create rect missing 0 0 10\n' +
     'create rect extra 0 0 10 10 red extra\n' +
-    'create circle c1 0 0 10\n' +
+    'create hexagon h1 0 0 10\n' +
     'tree\n' +
     'exit\n',
   );
@@ -295,7 +377,7 @@ test('rejects invalid geometry and missing arguments without mutation', async ()
     result.stdout,
     /error: usage: create rect <id> <x> <y> <w> <h> \[fill\]/,
   );
-  assert.match(result.stdout, /error: unknown shape type: circle/);
+  assert.match(result.stdout, /error: unknown shape type: hexagon/);
 
   const lines = result.stdout.split('\n');
   assert.ok(lines.includes('└── rect#base x=0 y=0 w=10 h=10'));
@@ -448,6 +530,62 @@ test('Rect.toSvgElement preserves attribute order, optional fill, and escaping',
   assert.equal(
     new Rect('a"&<>', 1, 2, 3, 4, 'red&"<>').toSvgElement(),
     '<rect id="a&quot;&amp;&lt;&gt;" x="1" y="2" width="3" height="4" fill="red&amp;&quot;&lt;&gt;"/>',
+  );
+});
+
+test('Circle stores id, geometry, and optional fill', () => {
+  const filled = new Circle('c1', 100.5, -20.5, 20, 'red');
+  assert.equal(filled.id, 'c1');
+  assert.equal(filled.cx, 100.5);
+  assert.equal(filled.cy, -20.5);
+  assert.equal(filled.r, 20);
+  assert.equal(filled.fill, 'red');
+
+  const unfilled = new Circle('c2', 0, 0, 1);
+  assert.equal(unfilled.fill, undefined);
+});
+
+test('Circle rejects empty ids and invalid geometry', () => {
+  assert.throws(() => new Circle('', 0, 0, 10), /shape id must not be empty/);
+
+  for (const [cx, cy] of [[NaN, 0], [0, NaN], [Infinity, 0], [0, -Infinity]]) {
+    assert.throws(
+      () => new Circle('c1', cx, cy, 10),
+      /circle center coordinates must be finite numbers/,
+    );
+  }
+
+  for (const radius of [NaN, Infinity, -Infinity, 0, -1]) {
+    assert.throws(
+      () => new Circle('c1', 0, 0, radius),
+      /circle radius must be positive/,
+    );
+  }
+});
+
+test('Circle.describe matches the tree attribute format', () => {
+  assert.equal(
+    new Circle('c1', 100, 100, 20, 'red').describe(),
+    'circle#c1 cx=100 cy=100 r=20 fill=red',
+  );
+  assert.equal(
+    new Circle('c2', 1.5, 2.5, 3).describe(),
+    'circle#c2 cx=1.5 cy=2.5 r=3',
+  );
+});
+
+test('Circle.toSvgElement preserves attribute order, optional fill, and escaping', () => {
+  assert.equal(
+    new Circle('c1', 100, 100, 20, 'red').toSvgElement(),
+    '<circle id="c1" cx="100" cy="100" r="20" fill="red"/>',
+  );
+  assert.equal(
+    new Circle('c2', 1.5, 2.5, 3).toSvgElement(),
+    '<circle id="c2" cx="1.5" cy="2.5" r="3"/>',
+  );
+  assert.equal(
+    new Circle('a"&<>', 1, 2, 3, 'red&"<>').toSvgElement(),
+    '<circle id="a&quot;&amp;&lt;&gt;" cx="1" cy="2" r="3" fill="red&amp;&quot;&lt;&gt;"/>',
   );
 });
 

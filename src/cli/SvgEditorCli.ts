@@ -120,7 +120,7 @@ export class SvgEditorCli {
     const document = this.requireDocument();
 
     if (args.length === 0) {
-      this.failUsage('create rect <id> <x> <y> <w> <h> [fill]');
+      this.failUsage('create <type> <id> [params]');
     }
 
     const shapeType = args[0];
@@ -128,6 +128,15 @@ export class SvgEditorCli {
       throw new EditorError(`unknown shape type: ${shapeType} (is the plugin loaded?)`);
     }
 
+    if (shapeType === 'rect') {
+      this.createRect(document, args);
+      return;
+    }
+
+    this.createCircle(document, args);
+  }
+
+  private createRect(document: Document, args: string[]): void {
     if (args.length < 6 || args.length > 7) {
       this.failUsage('create rect <id> <x> <y> <w> <h> [fill]');
     }
@@ -156,6 +165,32 @@ export class SvgEditorCli {
     }
 
     console.log(`rect#${id} created`);
+  }
+
+  private createCircle(document: Document, args: string[]): void {
+    if (args.length < 5 || args.length > 6) {
+      this.failUsage('create circle <id> <cx> <cy> <r> [fill]');
+    }
+
+    const id = args[1];
+    if (document.hasShape(id)) {
+      throw new EditorError(`id already exists: ${id}`);
+    }
+
+    const cx = this.parseNumber(args[2], 'cx');
+    const cy = this.parseNumber(args[3], 'cy');
+    const radius = this.parseNumber(args[4], 'r');
+
+    if (radius <= 0) {
+      throw new EditorError('radius must be positive');
+    }
+
+    const shape = this.shapeFactory.createCircle(id, cx, cy, radius, args[5]);
+    if (!document.addShape(shape)) {
+      throw new EditorError(`id already exists: ${id}`);
+    }
+
+    console.log(`circle#${id} created`);
   }
 
   private tree(args: string[]): void {
@@ -218,6 +253,7 @@ export class SvgEditorCli {
     console.log('Available commands:');
     console.log('  init [w] [h]                                  Create a new canvas.');
     console.log('  create rect <id> <x> <y> <w> <h> [fill]       Create a rectangle.');
+    console.log('  create circle <id> <cx> <cy> <r> [fill]       Create a circle.');
     console.log('  tree                                          Show the document tree.');
     console.log('  save [file.svg]                               Save the current document.');
     console.log('  help                                          Show this help message.');

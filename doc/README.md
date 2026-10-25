@@ -7,7 +7,7 @@
 | 模块              | 职责                                         | 当前状态               |
 | --------------- | ------------------------------------------ | ------------------ |
 | `src/cli/`      | 读取输入、独立词法解析、命令分派并输出结果，格式化 tree。            | 已实现                |
-| `src/model/`    | 文档、根容器、容器子节点管理、全局 ID 索引、多态图形与图形工厂。         | 已实现 Stage 2-B 模型基础 |
+| `src/model/`    | 文档、根容器、容器子节点管理、全局 ID 索引、多态图形与图形工厂。         | 已实现 Stage 3-A（Rect/Circle） |
 | `src/commands/` | Command 接口、命令工厂注册表；具体编辑命令与 undo/redo 后续实现。 | 基础层已实现，具体命令未实现     |
 | `src/io/`       | SVG 序列化与文件写入。                              | 已实现 save 子集        |
 | `src/errors/`   | 共享的 `EditorError` 类型，承载可直接展示的错误消息。         | 已实现 Stage 2-E      |
@@ -22,7 +22,8 @@
 - `RootContainer`：实现 `ShapeContainer`，代表文档根容器；它不是一种 `Shape`，不继承图形基类。
 - `Shape`：抽象图形基类，封装非空 ID、父容器引用、`describe()`、`toSvgElement()` 和 SVG 属性转义。
 - `Rect`：继承 `Shape`，用私有字段保存坐标、宽高和可选 fill，构造时校验几何；自身负责 tree 描述和 `<rect>` 元素生成。
-- `ShapeFactory`：集中识别支持的图形类型并创建 `Rect`，避免 CLI 直接构造图形。
+- `Circle`：继承 `Shape`，用私有字段保存圆心、半径和可选 fill，构造时校验圆心为有限数值且半径为正；自身负责 tree 描述和 `<circle>` 元素生成。
+- `ShapeFactory`：集中识别支持的图形类型并创建 `Rect` 或 `Circle`，避免 CLI 直接构造图形；当前仍使用类型分支，注册表式工厂留到 Task 3-F。
 - `SvgEditorCli`：持有当前 `Document`，用 `readline` 逐行读取，先交给 `Tokenizer` 生成 token，再分派 `init`、`create`、`tree`、`save`、`help`、`exit`；`handleLine` 是统一错误边界，捕获 Tokenizer 和命令异常后输出单行 `error: ...`；启动时输出固定单行 banner，仅在 TTY 交互模式输出 `svg> ` 提示符。
 - `Tokenizer`：把一行原始输入切分为 token 数组，处理普通空白、双引号参数和整行注释；引号错误抛出 `EditorError`；不执行命令、不访问文档、不输出日志。
 - `EditorError`：位于 `src/errors/`，继承 `Error` 并设置 `name = 'EditorError'`，只保存完整用户可读消息；不依赖模型、CLI、I/O 或具体命令，也不包含错误码或分类系统。
@@ -40,11 +41,11 @@
 - `io` 可以依赖 `model`。
 - `model` 不依赖 `cli`、`io`、`errors` 或具体命令类。
 - `errors` 不依赖任何项目模块。
-- `model` 内部：`Document` 组合 `ShapeRegistry` 和 `RootContainer`，并使用 `Shape`；`RootContainer` 组合 `ChildShapeList`；`ChildShapeList` 使用 `ShapeRegistry` 和 `Shape`；`Shape` 只以类型方式引用 `ShapeContainer` 作为父节点类型；`Rect` 继承 `Shape`；`ShapeFactory` 创建 `Rect`。
+- `model` 内部：`Document` 组合 `ShapeRegistry` 和 `RootContainer`，并使用 `Shape`；`RootContainer` 组合 `ChildShapeList`；`ChildShapeList` 使用 `ShapeRegistry` 和 `Shape`；`Shape` 只以类型方式引用 `ShapeContainer` 作为父节点类型；`Rect` 和 `Circle` 继承 `Shape`；`ShapeFactory` 创建 `Rect` 和 `Circle`。
 - `cli` 内部：`SvgEditorCli` 依赖 `Tokenizer`、`TreeFormatter`、`ShapeFactory`、`SvgSerializer`、`SvgFileWriter` 和 `EditorError`；`Tokenizer` 依赖 `EditorError`，不依赖模型、I/O 或其他 CLI 类。
 - `commands` 内部：`CommandRegistry` 只依赖同层的 `Command` 类型；不依赖 `SvgEditorCli`、`Document`、具体图形或 I/O。
 - `cli` 尚未依赖 `commands`；现有 `switch` 分派保持不变。
-- `test` 通过子进程调用编译后的 CLI，并直接加载编译后的 `Tokenizer`、`Document`、`Rect`、`CommandRegistry` 验证词法、模型和注册表行为。
+- `test` 通过子进程调用编译后的 CLI，并直接加载编译后的 `Tokenizer`、`Document`、`Rect`、`Circle`、`CommandRegistry` 验证词法、模型和注册表行为。
 
 规划中的依赖：
 
@@ -86,6 +87,7 @@ package model {
   class ChildShapeList
   abstract class Shape
   class Rect
+  class Circle
   class ShapeFactory
 }
 
@@ -99,7 +101,9 @@ ChildShapeList --> ShapeContainer
 ChildShapeList --> Shape
 Shape --> ShapeContainer : parent
 Rect --|> Shape
+Circle --|> Shape
 ShapeFactory --> Rect
+ShapeFactory --> Circle
 @enduml
 ```
 
@@ -137,14 +141,15 @@ CommandRegistry ..> Command : creates via CommandFactory
 
 ### 设计模式与扩展点
 
-- 当前使用封装、多态和工厂：`Shape` 定义统一接口，`Rect` 把 tree 描述与 SVG 元素生成封装在自身；`TreeFormatter` 和 `SvgSerializer` 只依赖 `Shape` 接口；`ShapeFactory` 集中识别并创建 `Rect`。
+- 当前使用封装、多态和工厂：`Shape` 定义统一接口，`Rect` 和 `Circle` 把 tree 描述与 SVG 元素生成封装在自身；`TreeFormatter` 和 `SvgSerializer` 只依赖 `Shape` 接口；`ShapeFactory` 集中识别并创建 `Rect` 或 `Circle`。
 - Task 4 新增容器抽象：`ShapeContainer` 约定容器行为，`ChildShapeList` 复用子节点顺序、父节点关系和 ID 注册规则；`RootContainer` 只代表根容器，不继承 `Shape`；`Document` 不是容器，负责文档尺寸、全局 ID 索引和根容器。该抽象为未来 `Group`/Composite 提供基础，但 `Group`、嵌套遍历和 Composite 操作尚未实现。
 - Task 5 将词法切分从 `SvgEditorCli` 抽离为 `Tokenizer`：Tokenizer 只生成 token，CLI 仍保留 `switch` 命令分派。这降低了输入解析与命令执行的耦合。
 - Task 6 新增 `Command` 接口和 `CommandRegistry` 基础层：接口定义 `execute()`/`undo()` 契约，注册表用命令名保存无参工厂并支持注册、查询和创建；具体命令、命令历史和 undo/redo 尚未实现，CLI 也尚未接入注册表。
 - Task 7（Stage 2-E）建立统一错误边界：`EditorError` 位于 `src/errors/`，`SvgEditorCli.handleLine` 是 CLI 唯一捕获并输出 `error: ...` 的位置；Tokenizer 和命令方法抛出可预期错误，不再各自打印。交互式 TTY 保留 `svg> ` 提示符，管道输入不输出提示符，启动 banner 固定为单行。
+- Stage 3-A 新增 `Circle`：图形自身实现 `describe()` 和 `toSvgElement()`，`TreeFormatter`/`SvgSerializer` 未增加圆形类型判断。`SvgEditorCli.create` 仅为命令参数语法分派 rect/circle 两个解析路径，`ShapeFactory` 仍负责构造具体图形；注册表式工厂和统一类型分派留到 Task 3-F。
 - `AGENTS.md` 要求 Command、Composite 和 undo/redo；当前已实现 Command 接口和注册表基础，但具体命令、Composite 和 undo/redo 仍未实现，因此仍是阶段性缺失，不是最终架构。
 - `SvgEditorCli.execute` 目前仍是唯一的命令名分派点；`CommandRegistry` 存在但未接入 CLI。后续实现具体命令时再把注册表接入分派流程，并把编辑操作封装成 undo 单元。
-- 图形类型、命令集合、SVG 格式是主要变化点；`Shape` 为新增图形提供统一多态接口，`ShapeFactory` 预留类型分派位置，`ShapeContainer`/`ChildShapeList` 为未来 `Group` 预留容器复用点，`CommandRegistry` 为具体命令注册预留入口，`model`、`io` 与 `commands` 的边界已划分。本阶段不提前创建 `Group`、具体命令类或插件类。
+- 图形类型、命令集合、SVG 格式是主要变化点；`Shape` 为新增图形提供统一多态接口，`Circle` 验证了该扩展路径；`ShapeFactory` 预留类型分派位置，Task 3-F 将改为注册表式工厂；`ShapeContainer`/`ChildShapeList` 为未来 `Group` 预留容器复用点，`CommandRegistry` 为具体命令注册预留入口，`model`、`io` 与 `commands` 的边界已划分。本阶段不提前创建 `Group`、具体命令类或插件类。
 
 ## 过程记录
 
@@ -192,12 +197,20 @@ CommandRegistry ..> Command : creates via CommandFactory
 - Task 7 验证：针对性运行 `npm run build` 后 `node --test test/cli.test.mjs`，33/33 通过；`npm run typecheck` 通过；`npm test` 53/53 通过（CLI 33 + CommandRegistry 8 + Tokenizer 12）。
 - Task 7 已知限制：交互式 TTY 下的 `svg> ` 提示符无法通过当前管道式进程测试验证；测试断言了管道输出不含提示符，交互分支由 `process.stdin.isTTY` 代码路径保留。
 - README 决策：新增 `src/errors/` 目录改变了根 README 展示的源码布局，因此只在 `src/io/` 之后补一条 `src/errors/` 职责；CLI 命令、运行方式和错误文案未变，其他章节不改。
+- Task 3-A 开始前检查：分支 `main`，HEAD `97dc9e6`（`docs: 更新 AGENTS.md 和 doc/AGENTS.md 的规则与结构`），与 `origin/main` 一致；工作区仅有未提交的 `项目规划.md` 阶段 3 任务拆分（用户已有工作，保留并在本任务中同步更新）；53 个测试作为回归基线。Node.js v22.22.2，npm 10.9.7。
+- Task 3-A 作业核对：作业规定 `create circle <id> <cx> <cy> <r> [fill]`，生成 `<circle id="…" cx="…" cy="…" r="…" fill="…"/>`；fill 省略时不写该属性。作业未为圆形校验规定专门文案，沿用矩形风格采用“圆心必须为有限数值、半径必须为正”，不因越界拒绝图形；tree 沿用现有单空格属性格式，输出 `circle#id cx=… cy=… r=… [fill=…]`。
+- Task 3-A 设计决策：新增 `Circle extends Shape`，几何属性和可选 fill 使用私有字段，构造器校验有限圆心与正半径，`describe()`/`toSvgElement()` 由图形自身实现；`ShapeFactory` 增加 `supports('circle')` 和 `createCircle()`。CLI 在创建前完成参数解析、重复 ID 检查和半径校验，任一失败都不修改文档；`TreeFormatter`/`SvgSerializer` 未增加圆形分支。未引入注册表式工厂、其他图形或编辑命令。
+- Task 3-A 实现：新增 `src/model/Circle.ts`；修改 `src/model/ShapeFactory.ts`、`src/cli/SvgEditorCli.ts`（create 的 rect/circle 参数路径、help）和 `test/cli.test.mjs`（Circle 模型测试、CLI 创建与保存、非法参数/重复 ID 不改文档）。
+- Task 3-A 验证：`npm run build && node --test test/cli.test.mjs` 为 39/39 通过；`npm run typecheck` 通过；`npm test` 为 59/59 通过（CLI 39 + CommandRegistry 8 + Tokenizer 12）。本任务未手工打开浏览器验收 SVG 渲染。
+- README 决策：本次新增用户可见的 `create circle` 命令，改变当前范围、示例、手工验收和 `src/model/` 职责，根 README 更新这些相关段落；未修改输入规则、构建流程和其他无关章节。
+- `项目规划.md` 同步：更新当前基线（`97dc9e6`、Stage 2-E 已提交、3-A 未提交）、修正过时的 `Canvas`/`RectangleShape` 描述，标记 3-A 完成并把下一项标为 3-B。
 
 ## 一致性自查
 
-- 模块划分：实际目录为 `src/cli/`（`main.ts`、`SvgEditorCli.ts`、`Tokenizer.ts`、`TreeFormatter.ts`）、`src/model/`（`Shape.ts`、`Rect.ts`、`Document.ts`、`ShapeRegistry.ts`、`ShapeContainer.ts`、`ChildShapeList.ts`、`RootContainer.ts`、`ShapeFactory.ts`）、`src/commands/`（`Command.ts`、`CommandRegistry.ts`）、`src/io/`（`SvgSerializer.ts`、`SvgFileWriter.ts`）、`src/errors/`（`EditorError.ts`）、`test/cli.test.mjs`、`test/tokenizer.test.mjs`、`test/command-registry.test.mjs`；`Canvas.ts` 已删除。
-- 依赖方向：`SvgEditorCli` 导入 `Document`、`ShapeFactory`、`Tokenizer`、`io` 和 `EditorError`；`Tokenizer` 只导入 `EditorError`，不依赖模型或 I/O；`EditorError` 没有项目内导入；`TreeFormatter`/`SvgSerializer` 导入 `Document` 并读取 `root.children`，只调用 `describe()`/`toSvgElement()`；`Document` 组合 `ShapeRegistry` 和 `RootContainer`；`RootContainer` 组合 `ChildShapeList`；`ChildShapeList` 使用 `ShapeRegistry` 和 `Shape`；`Shape` 以类型方式引用 `ShapeContainer`；`Rect` 继承 `Shape`；`ShapeFactory` 创建 `Rect`；`CommandRegistry` 只以类型方式引用同层 `Command`，未导入 CLI、模型或 I/O。未发现 `model → cli/io/errors` 的依赖。
+- 模块划分：实际目录为 `src/cli/`（`main.ts`、`SvgEditorCli.ts`、`Tokenizer.ts`、`TreeFormatter.ts`）、`src/model/`（`Shape.ts`、`Rect.ts`、`Circle.ts`、`Document.ts`、`ShapeRegistry.ts`、`ShapeContainer.ts`、`ChildShapeList.ts`、`RootContainer.ts`、`ShapeFactory.ts`）、`src/commands/`（`Command.ts`、`CommandRegistry.ts`）、`src/io/`（`SvgSerializer.ts`、`SvgFileWriter.ts`）、`src/errors/`（`EditorError.ts`）、`test/cli.test.mjs`、`test/tokenizer.test.mjs`、`test/command-registry.test.mjs`；`Canvas.ts` 已删除。
+- 依赖方向：`SvgEditorCli` 导入 `Document`、`ShapeFactory`、`Tokenizer`、`io` 和 `EditorError`；`Tokenizer` 只导入 `EditorError`，不依赖模型或 I/O；`EditorError` 没有项目内导入；`TreeFormatter`/`SvgSerializer` 导入 `Document` 并读取 `root.children`，只调用 `describe()`/`toSvgElement()`；`Document` 组合 `ShapeRegistry` 和 `RootContainer`；`RootContainer` 组合 `ChildShapeList`；`ChildShapeList` 使用 `ShapeRegistry` 和 `Shape`；`Shape` 以类型方式引用 `ShapeContainer`；`Rect` 和 `Circle` 继承 `Shape`；`ShapeFactory` 创建 `Rect` 和 `Circle`；`CommandRegistry` 只以类型方式引用同层 `Command`，未导入 CLI、模型或 I/O。未发现 `model → cli/io/errors` 的依赖。
 - 错误边界：`src/cli/` 中只有 `SvgEditorCli.handleLine` 的 `catch` 输出 `error: ...`；其他 CLI 方法不再直接打印错误，而是抛出 `EditorError`；Tokenizer 的引号错误也抛出 `EditorError`。模型层仍使用通用 `Error`，未在本任务中改造。
+- 多态输出：`TreeFormatter` 和 `SvgSerializer` 没有 `rect`/`circle` 类型判断，Rect 与 Circle 各自实现 `describe()`/`toSvgElement()`；`SvgEditorCli.create` 中的 rect/circle 分支只负责命令参数语法，并由 `ShapeFactory` 构造图形。
 - 词法解析：`src/cli/` 中没有 `command.split(/\s+/)`；CLI 通过 `Tokenizer.tokenize()` 获取 token 数组后再分派。
 - 注册表：`CommandRegistry` 只提供注册、查询、创建和名称列表；不执行命令，不创建具体命令；CLI 当前未导入或使用它。
 - 一类一文件：上述实现类均为独立文件，文件名与类名一致。
@@ -208,26 +221,28 @@ CommandRegistry ..> Command : creates via CommandFactory
 
 - 环境：Node.js v22.22.2，npm 10.9.7。
 - `npm run typecheck`：通过，无类型错误。
-- 针对性测试：`npm run build` 后运行 `node --test test/cli.test.mjs`，33 个 CLI 集成测试全部通过。
-- `npm test`：先构建，再运行 `node --test test/cli.test.mjs test/tokenizer.test.mjs test/command-registry.test.mjs`；53 个测试通过，0 失败（CLI 33 + CommandRegistry 8 + Tokenizer 12）。
+- 针对性测试：`npm run build` 后运行 `node --test test/cli.test.mjs`，39 个 CLI 集成测试全部通过。
+- `npm test`：先构建，再运行 `node --test test/cli.test.mjs test/tokenizer.test.mjs test/command-registry.test.mjs`；59 个测试通过，0 失败（CLI 39 + CommandRegistry 8 + Tokenizer 12）。
 - 不变量检查：测试覆盖根容器顺序、大小写敏感 ID、重复 ID、重复/跨容器挂载、添加/移除失败不改状态、移除后清除父节点、ID 复用，以及 ID 索引与容器内容一致。
-- 引用检查：`src/` 中无 `Canvas`、`RectangleShape` 或 `createRectangle` 残留；`TreeFormatter`/`SvgSerializer` 读取 `Document.root.children`，只调用 `describe()`/`toSvgElement()`，未读取矩形专属属性。
+- 引用检查：`src/` 中无 `Canvas`、`RectangleShape` 或 `createRectangle` 残留；`TreeFormatter`/`SvgSerializer` 读取 `Document.root.children`，只调用 `describe()`/`toSvgElement()`，未读取矩形或圆形专属属性。
+- Circle 检查：构造器拒绝空 ID、非有限圆心和非正/非有限半径；测试覆盖 `cx`/`cy`/`r` 的正常访问、可选 fill、describe/SVG 属性顺序与转义；CLI 测试覆盖重复 ID、非法参数、缺少/多余参数，并断言失败后 tree 只保留原有图形。
 - 词法检查：`Tokenizer` 独立存在于 `src/cli/Tokenizer.ts`；`src/cli/` 中没有 `command.split(/\s+/)`；CLI 通过 token 数组分派，引号异常由 `handleLine` 统一输出且不退出。
 - 错误处理检查：CLI 命令方法中不再有 `console.log('error: ...')`；`error:` 前缀只由 `handleLine` 添加；测试覆盖未知命令、参数错误、无文档、写文件失败和 Tokenizer 错误，均只出现一次前缀。
 - 注册表检查：`CommandRegistry` 只以类型方式依赖 `Command`；测试覆盖注册、查询、创建、工厂调用、重复注册、空名称、未知命令、工厂异常和多名称独立；未执行命令，未创建具体命令，CLI 未导入注册表。
-- CLI 回归：33 个 CLI 测试全部通过，覆盖 banner 精确文本、管道无提示符、EOF 正常退出、多行管道逐行执行和失败不改文档。
+- CLI 回归：39 个 CLI 测试全部通过，覆盖 rect 原有行为、circle 创建/树输出/SVG 保存、banner 精确文本、管道无提示符、EOF 正常退出和失败不改文档。
 - 交互提示符限制：当前自动化测试通过管道运行 CLI，只验证了管道输出不含 `svg> `；TTY 交互提示符由 `process.stdin.isTTY === true` 分支保留，未在自动化测试中验证。
-- 浏览器验收步骤仍见根 README；Task 7 未修改 SVG 输出，未重复在浏览器中打开文件。
-- Git 检查：本轮开始时 `main` 与 `origin/main` 均为 `7693850`，工作区仅有未跟踪的 `Task7.md`；完成后 `git diff --check` 无空白错误（仅有 LF/CRLF 警告），工作区为 5 个已跟踪文件修改、未跟踪的 `src/errors/` 与 `Task7.md`；未创建 commit、push 或 tag。
+- 浏览器验收步骤仍见根 README；Task 3-A 未手工在浏览器中打开生成的 SVG。
+- Git 检查：本轮开始时 `main` 与 `origin/main` 均为 `97dc9e6`，工作区仅有未提交的 `项目规划.md`；完成后 `git diff --check` 无空白错误（仅有 LF/CRLF 提示），工作区为 6 个已跟踪文件修改、未跟踪 `src/model/Circle.ts`；未创建 commit、push 或 tag。
 
 ## 未完成事项
 
-- 其他图形类型（circle/ellipse/line/text/g）、Group 容器与嵌套关系、`in` 子句。
+- 其他图形类型（ellipse/line/text/g）、Group 容器与嵌套关系、`in` 子句。
 - `read`、`canvas`、`move`、`scale`、`set`、`delete`、`group`、`ungroup`、`addto`、`front`、`back`、`show`、`undo`、`redo`。
 - 具体编辑命令、命令历史、Composite 容器行为和 undo/redo 尚未实现；`Command` 接口与 `CommandRegistry` 只是基础层。
 - `save` 无文件名且无来源路径时明确报错；`read` 实现后再接入“保存到读入路径”。
 - 按本阶段规范，不支持行内注释、单引号引用和反斜杠转义；只有行首 `#` 作为整行注释。
 - Stage 2-E 已完成 `EditorError`、统一错误边界、固定单行 banner、TTY/管道提示符区分和 EOF/管道行为测试；交互式 TTY 提示符未纳入自动化测试。
-- 阶段 2 尚未完成：Circle、Ellipse、Line、Text、Group 与 Composite、具体编辑命令和 undo/redo；Command 接口/注册表基础已在 Task 6 完成，Stage 2-E 统一错误与 REPL 行为已在 Task 7 完成，Tokenizer 与双引号参数已在 Task 5 完成，Document、根容器和父节点基础已在 Task 4 完成。
-- `SvgEditorCli` 尚未接入 `CommandRegistry`，现有 `switch` 分派保持不变。
+- Stage 3-A 已完成 Circle（Shape 子类、工厂创建、CLI `create circle`、tree/SVG 输出和测试）；Stage 3 其余任务（Ellipse、Line、Text、Group/Composite、注册表式工厂、`create ... in`、tree 子树、show、集成验收）尚未完成。
+- 阶段 2 的 A–E 已完成；具体编辑命令和 undo/redo 仍属于后续阶段。Command 接口/注册表基础已在 Task 6 完成，Stage 2-E 统一错误与 REPL 行为已在 Task 7 完成，Tokenizer 与双引号参数已在 Task 5 完成，Document、根容器和父节点基础已在 Task 4 完成。
+- `ShapeFactory` 仍按 rect/circle 类型分支创建图形，注册表式工厂留到 Task 3-F；`SvgEditorCli` 尚未接入 `CommandRegistry`，现有命令 `switch` 分派保持不变。
 - `Shape.attachTo()` / `Shape.detachFrom()` 的可见性与父节点不变量审查仍待后续独立处理。
