@@ -1,9 +1,10 @@
 import { Circle } from './Circle.js';
+import { Ellipse } from './Ellipse.js';
 import { Rect } from './Rect.js';
 
 export class ShapeFactory {
   public supports(type: string): boolean {
-    return type === 'rect' || type === 'circle';
+    return type === 'rect' || type === 'circle' || type === 'ellipse';
   }
 
   public createRect(
@@ -25,5 +26,16 @@ export class ShapeFactory {
     fill?: string,
   ): Circle {
     return new Circle(id, cx, cy, radius, fill);
+  }
+
+  public createEllipse(
+    id: string,
+    cx: number,
+    cy: number,
+    rx: number,
+    ry: number,
+    fill?: string,
+  ): Ellipse {
+    return new Ellipse(id, cx, cy, rx, ry, fill);
   }
 }

@@ -125,7 +125,7 @@ export class SvgEditorCli {
 
     const shapeType = args[0];
     if (!this.shapeFactory.supports(shapeType)) {
-      throw new EditorError(`unknown shape type: ${shapeType} (is the plugin loaded?)`);
+      this.failUnknownShapeType(shapeType);
     }
 
     if (shapeType === 'rect') {
@@ -133,7 +133,17 @@ export class SvgEditorCli {
       return;
     }
 
-    this.createCircle(document, args);
+    if (shapeType === 'circle') {
+      this.createCircle(document, args);
+      return;
+    }
+
+    if (shapeType === 'ellipse') {
+      this.createEllipse(document, args);
+      return;
+    }
+
+    this.failUnknownShapeType(shapeType);
   }
 
   private createRect(document: Document, args: string[]): void {
@@ -193,6 +203,37 @@ export class SvgEditorCli {
     console.log(`circle#${id} created`);
   }
 
+  private createEllipse(document: Document, args: string[]): void {
+    if (args.length < 6 || args.length > 7) {
+      this.failUsage('create ellipse <id> <cx> <cy> <rx> <ry> [fill]');
+    }
+
+    const id = args[1];
+    if (document.hasShape(id)) {
+      throw new EditorError(`id already exists: ${id}`);
+    }
+
+    const cx = this.parseNumber(args[2], 'cx');
+    const cy = this.parseNumber(args[3], 'cy');
+    const rx = this.parseNumber(args[4], 'rx');
+    const ry = this.parseNumber(args[5], 'ry');
+
+    if (rx <= 0) {
+      throw new EditorError('rx must be positive');
+    }
+
+    if (ry <= 0) {
+      throw new EditorError('ry must be positive');
+    }
+
+    const shape = this.shapeFactory.createEllipse(id, cx, cy, rx, ry, args[6]);
+    if (!document.addShape(shape)) {
+      throw new EditorError(`id already exists: ${id}`);
+    }
+
+    console.log(`ellipse#${id} created`);
+  }
+
   private tree(args: string[]): void {
     const document = this.requireDocument();
 
@@ -249,11 +290,16 @@ export class SvgEditorCli {
     throw new EditorError(`usage: ${usage}`);
   }
 
+  private failUnknownShapeType(shapeType: string): never {
+    throw new EditorError(`unknown shape type: ${shapeType} (is the plugin loaded?)`);
+  }
+
   private printHelp(): void {
     console.log('Available commands:');
     console.log('  init [w] [h]                                  Create a new canvas.');
     console.log('  create rect <id> <x> <y> <w> <h> [fill]       Create a rectangle.');
     console.log('  create circle <id> <cx> <cy> <r> [fill]       Create a circle.');
+    console.log('  create ellipse <id> <cx> <cy> <rx> <ry> [fill] Create an ellipse.');
     console.log('  tree                                          Show the document tree.');
     console.log('  save [file.svg]                               Save the current document.');
     console.log('  help                                          Show this help message.');

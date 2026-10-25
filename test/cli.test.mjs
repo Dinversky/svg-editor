@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 const require = createRequire(import.meta.url);
 const { Circle } = require('../dist/model/Circle.js');
 const { Document } = require('../dist/model/Document.js');
+const { Ellipse } = require('../dist/model/Ellipse.js');
 const { Rect } = require('../dist/model/Rect.js');
 
 const cliPath = path.join(
@@ -93,6 +94,10 @@ test('prints the exact banner, handles help, unknown commands, and exits', async
   assert.doesNotMatch(result.stdout, /Type "help" for available commands/);
   assert.match(result.stdout, /create rect <id> <x> <y> <w> <h> \[fill\]/);
   assert.match(result.stdout, /create circle <id> <cx> <cy> <r> \[fill\]/);
+  assert.match(
+    result.stdout,
+    /create ellipse <id> <cx> <cy> <rx> <ry> \[fill\]/,
+  );
   assert.match(result.stdout, /^error: unknown command: unknown$/m);
   assert.doesNotMatch(result.stdout, /error: error:/);
   assert.doesNotMatch(result.stdout, /svg> /);
@@ -322,6 +327,105 @@ test('rejects invalid circles and duplicate IDs without changing the document', 
     2,
   );
   assert.doesNotMatch(result.stdout, /circle#c1 cx=30/);
+});
+
+test('creates ellipses and serializes them in document order', async (t) => {
+  const tempDir = createTempDir(t);
+  const filePath = path.join(tempDir, 'ellipses.svg');
+
+  const result = await runCli(
+    'init 500 400\n' +
+    'create rect r1 0 0 10 10\n' +
+    'create circle c1 10 10 5\n' +
+    'create ellipse e1 100 100 30 20 blue\n' +
+    'create ellipse e2 50.5 60.5 10 5\n' +
+    'tree\n' +
+    `save ${filePath}\n` +
+    'exit\n',
+  );
+
+  assert.equal(result.code, 0);
+  assert.match(result.stdout, /ellipse#e1 created/);
+  assert.match(result.stdout, /ellipse#e2 created/);
+  assert.ok(result.stdout.includes(`saved to ${filePath} (4 elements)`));
+
+  const lines = withoutPrompt(result.stdout).split('\n');
+  const treeIndex = lines.indexOf('svg (500x400)');
+  assert.notEqual(treeIndex, -1);
+  assert.equal(lines[treeIndex + 1], '├── rect#r1 x=0 y=0 w=10 h=10');
+  assert.equal(lines[treeIndex + 2], '├── circle#c1 cx=10 cy=10 r=5');
+  assert.equal(
+    lines[treeIndex + 3],
+    '├── ellipse#e1 cx=100 cy=100 rx=30 ry=20 fill=blue',
+  );
+  assert.equal(
+    lines[treeIndex + 4],
+    '└── ellipse#e2 cx=50.5 cy=60.5 rx=10 ry=5',
+  );
+
+  const expectedSvg = [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<svg xmlns="http://www.w3.org/2000/svg" width="500" height="400" viewBox="0 0 500 400">',
+    '  <rect id="r1" x="0" y="0" width="10" height="10"/>',
+    '  <circle id="c1" cx="10" cy="10" r="5"/>',
+    '  <ellipse id="e1" cx="100" cy="100" rx="30" ry="20" fill="blue"/>',
+    '  <ellipse id="e2" cx="50.5" cy="60.5" rx="10" ry="5"/>',
+    '</svg>',
+    '',
+  ].join('\n');
+
+  assert.equal(readFileSync(filePath, 'utf8'), expectedSvg);
+});
+
+test('rejects invalid ellipses and duplicate IDs without changing the document', async () => {
+  const result = await runCli(
+    'init\n' +
+    'create circle keep 5 6 7\n' +
+    'create ellipse e1 10 20 30 40 blue\n' +
+    'create ellipse e1 1 2 3 4 red\n' +
+    'create ellipse zero-rx 10 20 0 5\n' +
+    'create ellipse zero-ry 10 20 5 0\n' +
+    'create ellipse negative-rx 10 20 -1 5\n' +
+    'create ellipse negative-ry 10 20 5 -1\n' +
+    'create ellipse bad-cx abc 20 5 6\n' +
+    'create ellipse bad-cy 10 abc 5 6\n' +
+    'create ellipse bad-rx 10 20 abc 6\n' +
+    'create ellipse bad-ry 10 20 5 abc\n' +
+    'create ellipse missing 10 20 5\n' +
+    'create ellipse extra 10 20 5 6 red extra\n' +
+    'tree\n' +
+    'exit\n',
+  );
+
+  assert.equal(result.code, 0);
+  assert.match(result.stdout, /error: id already exists: e1/);
+  assert.equal(
+    (result.stdout.match(/error: rx must be positive/g) ?? []).length,
+    2,
+  );
+  assert.equal(
+    (result.stdout.match(/error: ry must be positive/g) ?? []).length,
+    2,
+  );
+  assert.match(result.stdout, /error: invalid number for cx: abc/);
+  assert.match(result.stdout, /error: invalid number for cy: abc/);
+  assert.match(result.stdout, /error: invalid number for rx: abc/);
+  assert.match(result.stdout, /error: invalid number for ry: abc/);
+  assert.equal(
+    (result.stdout.match(/error: usage: create ellipse/g) ?? []).length,
+    2,
+  );
+
+  const lines = result.stdout.split('\n');
+  assert.ok(lines.includes('├── circle#keep cx=5 cy=6 r=7'));
+  assert.ok(
+    lines.includes('└── ellipse#e1 cx=10 cy=20 rx=30 ry=40 fill=blue'),
+  );
+  assert.equal(
+    lines.filter((line) => line.startsWith('├──') || line.startsWith('└──')).length,
+    2,
+  );
+  assert.doesNotMatch(result.stdout, /ellipse#e1 cx=1 cy=2/);
 });
 
 test('rejects duplicate IDs without changing the document', async () => {
@@ -586,6 +690,72 @@ test('Circle.toSvgElement preserves attribute order, optional fill, and escaping
   assert.equal(
     new Circle('a"&<>', 1, 2, 3, 'red&"<>').toSvgElement(),
     '<circle id="a&quot;&amp;&lt;&gt;" cx="1" cy="2" r="3" fill="red&amp;&quot;&lt;&gt;"/>',
+  );
+});
+
+test('Ellipse stores id, geometry, and optional fill', () => {
+  const filled = new Ellipse('e1', 100.5, -20.5, 30, 40, 'blue');
+  assert.equal(filled.id, 'e1');
+  assert.equal(filled.cx, 100.5);
+  assert.equal(filled.cy, -20.5);
+  assert.equal(filled.rx, 30);
+  assert.equal(filled.ry, 40);
+  assert.equal(filled.fill, 'blue');
+
+  const unfilled = new Ellipse('e2', 0, 0, 1, 2);
+  assert.equal(unfilled.fill, undefined);
+});
+
+test('Ellipse rejects empty ids and invalid geometry', () => {
+  assert.throws(() => new Ellipse('', 0, 0, 10, 20), /shape id must not be empty/);
+
+  for (const [cx, cy] of [[NaN, 0], [0, NaN], [Infinity, 0], [0, -Infinity]]) {
+    assert.throws(
+      () => new Ellipse('e1', cx, cy, 10, 20),
+      /ellipse center coordinates must be finite numbers/,
+    );
+  }
+
+  for (const [rx, ry] of [
+    [NaN, 20],
+    [10, NaN],
+    [Infinity, 20],
+    [10, -Infinity],
+    [0, 20],
+    [10, 0],
+    [-1, 20],
+    [10, -1],
+  ]) {
+    assert.throws(
+      () => new Ellipse('e1', 0, 0, rx, ry),
+      /ellipse radii must be positive/,
+    );
+  }
+});
+
+test('Ellipse.describe matches the tree attribute format', () => {
+  assert.equal(
+    new Ellipse('e1', 100, 100, 30, 20, 'blue').describe(),
+    'ellipse#e1 cx=100 cy=100 rx=30 ry=20 fill=blue',
+  );
+  assert.equal(
+    new Ellipse('e2', 1.5, 2.5, 3, 4).describe(),
+    'ellipse#e2 cx=1.5 cy=2.5 rx=3 ry=4',
+  );
+});
+
+test('Ellipse.toSvgElement preserves attribute order, optional fill, and escaping', () => {
+  assert.equal(
+    new Ellipse('e1', 100, 100, 30, 20, 'blue').toSvgElement(),
+    '<ellipse id="e1" cx="100" cy="100" rx="30" ry="20" fill="blue"/>',
+  );
+  assert.equal(
+    new Ellipse('e2', 1.5, 2.5, 3, 4).toSvgElement(),
+    '<ellipse id="e2" cx="1.5" cy="2.5" rx="3" ry="4"/>',
+  );
+  assert.equal(
+    new Ellipse('a"&<>', 1, 2, 3, 4, 'red&"<>').toSvgElement(),
+    '<ellipse id="a&quot;&amp;&lt;&gt;" cx="1" cy="2" rx="3" ry="4" fill="red&amp;&quot;&lt;&gt;"/>',
   );
 });
 
