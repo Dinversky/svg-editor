@@ -51,4 +51,11 @@ export abstract class Shape {
       .replaceAll('<', '&lt;')
       .replaceAll('>', '&gt;');
   }
+
+  protected escapeText(value: string): string {
+    return value
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;');
+  }
 }

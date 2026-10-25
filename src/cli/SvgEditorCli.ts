@@ -143,6 +143,16 @@ export class SvgEditorCli {
       return;
     }
 
+    if (shapeType === 'line') {
+      this.createLine(document, args);
+      return;
+    }
+
+    if (shapeType === 'text') {
+      this.createText(document, args);
+      return;
+    }
+
     this.failUnknownShapeType(shapeType);
   }
 
@@ -234,6 +244,51 @@ export class SvgEditorCli {
     console.log(`ellipse#${id} created`);
   }
 
+  private createLine(document: Document, args: string[]): void {
+    if (args.length < 6 || args.length > 7) {
+      this.failUsage('create line <id> <x1> <y1> <x2> <y2> [stroke]');
+    }
+
+    const id = args[1];
+    if (document.hasShape(id)) {
+      throw new EditorError(`id already exists: ${id}`);
+    }
+
+    const x1 = this.parseNumber(args[2], 'x1');
+    const y1 = this.parseNumber(args[3], 'y1');
+    const x2 = this.parseNumber(args[4], 'x2');
+    const y2 = this.parseNumber(args[5], 'y2');
+
+    const shape = this.shapeFactory.createLine(id, x1, y1, x2, y2, args[6]);
+    if (!document.addShape(shape)) {
+      throw new EditorError(`id already exists: ${id}`);
+    }
+
+    console.log(`line#${id} created`);
+  }
+
+  private createText(document: Document, args: string[]): void {
+    if (args.length !== 5) {
+      this.failUsage('create text <id> <x> <y> "content"');
+    }
+
+    const id = args[1];
+    if (document.hasShape(id)) {
+      throw new EditorError(`id already exists: ${id}`);
+    }
+
+    const x = this.parseNumber(args[2], 'x');
+    const y = this.parseNumber(args[3], 'y');
+    const content = args[4];
+
+    const shape = this.shapeFactory.createText(id, x, y, content);
+    if (!document.addShape(shape)) {
+      throw new EditorError(`id already exists: ${id}`);
+    }
+
+    console.log(`text#${id} created`);
+  }
+
   private tree(args: string[]): void {
     const document = this.requireDocument();
 
@@ -300,6 +355,8 @@ export class SvgEditorCli {
     console.log('  create rect <id> <x> <y> <w> <h> [fill]       Create a rectangle.');
     console.log('  create circle <id> <cx> <cy> <r> [fill]       Create a circle.');
     console.log('  create ellipse <id> <cx> <cy> <rx> <ry> [fill] Create an ellipse.');
+    console.log('  create line <id> <x1> <y1> <x2> <y2> [stroke] Create a line.');
+    console.log('  create text <id> <x> <y> "content"             Create a text element.');
     console.log('  tree                                          Show the document tree.');
     console.log('  save [file.svg]                               Save the current document.');
     console.log('  help                                          Show this help message.');

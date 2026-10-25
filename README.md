@@ -5,12 +5,14 @@ A TypeScript command-line SVG editor, developed incrementally for Lab1.
 ## Current scope
 
 This iteration provides a minimal SVG document editor with rectangles,
-circles, and ellipses. The implemented commands are:
+circles, ellipses, lines, and text. The implemented commands are:
 
 - `init [w] [h]` — create a new canvas; defaults to `800x600`.
 - `create rect <id> <x> <y> <w> <h> [fill]` — add a rectangle.
 - `create circle <id> <cx> <cy> <r> [fill]` — add a circle.
 - `create ellipse <id> <cx> <cy> <rx> <ry> [fill]` — add an ellipse.
+- `create line <id> <x1> <y1> <x2> <y2> [stroke]` — add a line.
+- `create text <id> <x> <y> "content"` — add a text element.
 - `tree` — display the canvas and its shapes in document order.
 - `save [file.svg]` — serialize the canvas to SVG and write it to a file.
 - `help` / `exit`.
@@ -52,6 +54,8 @@ init 800 600
 create rect r1 100 120 200 80 blue
 create circle c1 100 100 20 red
 create ellipse e1 300 150 80 50 green
+create line l1 100 250 700 250 black
+create text t1 40 300 "Hello SVG"
 tree
 save demo.svg
 exit
@@ -75,13 +79,14 @@ Input rules:
 2. Enter the commands shown above.
 3. Open the generated `demo.svg` in Chrome or Edge. A blue rectangle at
    `(100, 120)` with size `200x80`, a red circle centered at `(100, 100)`
-   with radius `20`, and a green ellipse centered at `(300, 150)` with
-   radii `80x50` should be visible.
+   with radius `20`, a green ellipse centered at `(300, 150)` with
+   radii `80x50`, a black line from `(100, 250)` to `(700, 250)`, and
+   black text `Hello SVG` at `(40, 300)` should be visible.
 
 The source layout follows the assignment architecture:
 
 - `src/cli/` — entry point, interactive loop, tokenization, command parsing, and tree output.
-- `src/model/` — `Shape`, `Rect`, `Circle`, `Ellipse`, `Document`, container/ID management, and `ShapeFactory`.
+- `src/model/` — `Shape`, `Rect`, `Circle`, `Ellipse`, `Line`, `Text`, `Document`, container/ID management, and `ShapeFactory`.
 - `src/commands/` — `Command` interface and `CommandRegistry` foundation; concrete edit commands and undo/redo are planned.
 - `src/io/` — SVG serialization and file writing.
 - `src/errors/` — shared `EditorError` type for expected editor errors.

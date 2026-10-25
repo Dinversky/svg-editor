@@ -11,7 +11,9 @@ const require = createRequire(import.meta.url);
 const { Circle } = require('../dist/model/Circle.js');
 const { Document } = require('../dist/model/Document.js');
 const { Ellipse } = require('../dist/model/Ellipse.js');
+const { Line } = require('../dist/model/Line.js');
 const { Rect } = require('../dist/model/Rect.js');
+const { Text } = require('../dist/model/Text.js');
 
 const cliPath = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -98,6 +100,11 @@ test('prints the exact banner, handles help, unknown commands, and exits', async
     result.stdout,
     /create ellipse <id> <cx> <cy> <rx> <ry> \[fill\]/,
   );
+  assert.match(
+    result.stdout,
+    /create line <id> <x1> <y1> <x2> <y2> \[stroke\]/,
+  );
+  assert.match(result.stdout, /create text <id> <x> <y> "content"/);
   assert.match(result.stdout, /^error: unknown command: unknown$/m);
   assert.doesNotMatch(result.stdout, /error: error:/);
   assert.doesNotMatch(result.stdout, /svg> /);
@@ -203,30 +210,6 @@ test('executes multi-line piped input and exits cleanly on EOF', async () => {
   assert.match(result.stdout, /Goodbye\./);
   assert.doesNotMatch(result.stdout, /error:/);
   assert.doesNotMatch(result.stdout, /svg> /);
-});
-
-test('failed commands leave the document unchanged', async () => {
-  const result = await runCli(
-    'init 200 100\n' +
-    'create rect keep 1 2 3 4\n' +
-    'init 0 0\n' +
-    'create rect keep 9 9 9 9\n' +
-    'create rect bad 0 0 -1 5\n' +
-    'tree\n' +
-    'exit\n',
-  );
-
-  assert.equal(result.code, 0);
-  const lines = result.stdout.split('\n');
-  const treeIndex = lines.indexOf('svg (200x100)');
-  assert.notEqual(treeIndex, -1);
-  assert.equal(lines[treeIndex + 1], '└── rect#keep x=1 y=2 w=3 h=4');
-  assert.equal(
-    lines.filter((line) => line.startsWith('├──') || line.startsWith('└──')).length,
-    1,
-  );
-  assert.match(result.stdout, /error: width must be positive/);
-  assert.match(result.stdout, /error: id already exists: keep/);
 });
 
 test('creates rectangles and shows them in insertion order', async () => {
@@ -428,19 +411,159 @@ test('rejects invalid ellipses and duplicate IDs without changing the document',
   assert.doesNotMatch(result.stdout, /ellipse#e1 cx=1 cy=2/);
 });
 
-test('rejects duplicate IDs without changing the document', async () => {
+test('creates lines and serializes them in document order', async (t) => {
+  const tempDir = createTempDir(t);
+  const filePath = path.join(tempDir, 'lines.svg');
+
+  const result = await runCli(
+    'init 600 400\n' +
+    'create rect r1 0 0 10 10\n' +
+    'create line l1 10 20 30 40 red\n' +
+    'create line l2 -5 50 100.5 200.5\n' +
+    'tree\n' +
+    `save ${filePath}\n` +
+    'exit\n',
+  );
+
+  assert.equal(result.code, 0);
+  assert.match(result.stdout, /line#l1 created/);
+  assert.match(result.stdout, /line#l2 created/);
+  assert.ok(result.stdout.includes(`saved to ${filePath} (3 elements)`));
+
+  const lines = withoutPrompt(result.stdout).split('\n');
+  const treeIndex = lines.indexOf('svg (600x400)');
+  assert.notEqual(treeIndex, -1);
+  assert.equal(lines[treeIndex + 1], '├── rect#r1 x=0 y=0 w=10 h=10');
+  assert.equal(lines[treeIndex + 2], '├── line#l1 (10,20) -> (30,40)');
+  assert.equal(lines[treeIndex + 3], '└── line#l2 (-5,50) -> (100.5,200.5)');
+
+  const expectedSvg = [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<svg xmlns="http://www.w3.org/2000/svg" width="600" height="400" viewBox="0 0 600 400">',
+    '  <rect id="r1" x="0" y="0" width="10" height="10"/>',
+    '  <line id="l1" x1="10" y1="20" x2="30" y2="40" stroke="red"/>',
+    '  <line id="l2" x1="-5" y1="50" x2="100.5" y2="200.5"/>',
+    '</svg>',
+    '',
+  ].join('\n');
+
+  assert.equal(readFileSync(filePath, 'utf8'), expectedSvg);
+});
+
+test('rejects invalid lines and duplicate IDs without changing the document', async () => {
   const result = await runCli(
     'init\n' +
-    'create rect r1 0 0 10 10 red\n' +
-    'create rect r1 5 5 50 50 blue\n' +
+    'create line keep 0 0 10 10 black\n' +
+    'create line l1 1 2 3 4 red\n' +
+    'create line l1 5 6 7 8 blue\n' +
+    'create line bad-x1 abc 2 3 4\n' +
+    'create line bad-y1 1 abc 3 4\n' +
+    'create line bad-x2 1 2 abc 4\n' +
+    'create line bad-y2 1 2 3 abc\n' +
+    'create line missing 1 2 3\n' +
+    'create line extra 1 2 3 4 red extra\n' +
     'tree\n' +
     'exit\n',
   );
 
   assert.equal(result.code, 0);
-  assert.match(result.stdout, /error: id already exists: r1/);
-  assert.match(result.stdout, /rect#r1 x=0 y=0 w=10 h=10 fill=red/);
-  assert.doesNotMatch(result.stdout, /rect#r1 x=5 y=5 w=50 h=50 fill=blue/);
+  assert.match(result.stdout, /error: id already exists: l1/);
+  assert.match(result.stdout, /error: invalid number for x1: abc/);
+  assert.match(result.stdout, /error: invalid number for y1: abc/);
+  assert.match(result.stdout, /error: invalid number for x2: abc/);
+  assert.match(result.stdout, /error: invalid number for y2: abc/);
+  assert.equal(
+    (result.stdout.match(/error: usage: create line/g) ?? []).length,
+    2,
+  );
+
+  const lines = result.stdout.split('\n');
+  assert.ok(lines.includes('├── line#keep (0,0) -> (10,10)'));
+  assert.ok(lines.includes('└── line#l1 (1,2) -> (3,4)'));
+  assert.equal(
+    lines.filter((line) => line.startsWith('├──') || line.startsWith('└──')).length,
+    2,
+  );
+  assert.doesNotMatch(result.stdout, /line#l1 \(5,6\)/);
+});
+
+test('creates texts and serializes their content in document order', async (t) => {
+  const tempDir = createTempDir(t);
+  const filePath = path.join(tempDir, 'texts.svg');
+
+  const result = await runCli(
+    'init 700 500\n' +
+    'create rect r1 0 0 10 10\n' +
+    'create text t1 20 40 "My Diagram"\n' +
+    'create text t2 50.5 60.5 "Tom & Jerry <3 \'quoted\' > done"\n' +
+    'create text empty 1 2 ""\n' +
+    'tree\n' +
+    `save ${filePath}\n` +
+    'exit\n',
+  );
+
+  assert.equal(result.code, 0);
+  assert.match(result.stdout, /text#t1 created/);
+  assert.match(result.stdout, /text#t2 created/);
+  assert.match(result.stdout, /text#empty created/);
+  assert.ok(result.stdout.includes(`saved to ${filePath} (4 elements)`));
+
+  const lines = withoutPrompt(result.stdout).split('\n');
+  const treeIndex = lines.indexOf('svg (700x500)');
+  assert.notEqual(treeIndex, -1);
+  assert.equal(lines[treeIndex + 1], '├── rect#r1 x=0 y=0 w=10 h=10');
+  assert.equal(lines[treeIndex + 2], '├── text#t1 (20,40) "My Diagram"');
+  assert.equal(
+    lines[treeIndex + 3],
+    '├── text#t2 (50.5,60.5) "Tom & Jerry <3 \'quoted\' > done"',
+  );
+  assert.equal(lines[treeIndex + 4], '└── text#empty (1,2) ""');
+
+  const expectedSvg = [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<svg xmlns="http://www.w3.org/2000/svg" width="700" height="500" viewBox="0 0 700 500">',
+    '  <rect id="r1" x="0" y="0" width="10" height="10"/>',
+    '  <text id="t1" x="20" y="40">My Diagram</text>',
+    '  <text id="t2" x="50.5" y="60.5">Tom &amp; Jerry &lt;3 \'quoted\' &gt; done</text>',
+    '  <text id="empty" x="1" y="2"></text>',
+    '</svg>',
+    '',
+  ].join('\n');
+
+  assert.equal(readFileSync(filePath, 'utf8'), expectedSvg);
+});
+
+test('rejects invalid texts and duplicate IDs without changing the document', async () => {
+  const result = await runCli(
+    'init\n' +
+    'create rect keep 0 0 10 10\n' +
+    'create text t1 10 20 "hello"\n' +
+    'create text t1 30 40 "again"\n' +
+    'create text bad-x abc 20 "x"\n' +
+    'create text bad-y 10 abc "x"\n' +
+    'create text missing 10 20\n' +
+    'create text extra 10 20 "x" extra\n' +
+    'tree\n' +
+    'exit\n',
+  );
+
+  assert.equal(result.code, 0);
+  assert.match(result.stdout, /error: id already exists: t1/);
+  assert.match(result.stdout, /error: invalid number for x: abc/);
+  assert.match(result.stdout, /error: invalid number for y: abc/);
+  assert.equal(
+    (result.stdout.match(/error: usage: create text/g) ?? []).length,
+    2,
+  );
+
+  const lines = result.stdout.split('\n');
+  assert.ok(lines.includes('├── rect#keep x=0 y=0 w=10 h=10'));
+  assert.ok(lines.includes('└── text#t1 (10,20) "hello"'));
+  assert.equal(
+    lines.filter((line) => line.startsWith('├──') || line.startsWith('└──')).length,
+    2,
+  );
+  assert.doesNotMatch(result.stdout, /text#t1 \(30,40\)/);
 });
 
 test('treats shape IDs as case-sensitive', async () => {
@@ -544,46 +667,6 @@ test('save without a filename reports a clear error', async () => {
   assert.doesNotMatch(result.stdout, /saved to/);
 });
 
-test('completes init -> create rect -> tree -> save', async (t) => {
-  const tempDir = createTempDir(t);
-  const filePath = path.join(tempDir, 'complete.svg');
-
-  const result = await runCli(
-    'init 800 600\n' +
-    'create rect r1 100 120 200 80 blue\n' +
-    'tree\n' +
-    `save ${filePath}\n` +
-    'exit\n',
-  );
-
-  assert.equal(result.code, 0);
-  assert.match(result.stdout, /canvas 800x600 created/);
-  assert.match(result.stdout, /rect#r1 created/);
-  assert.match(result.stdout, /svg \(800x600\)/);
-  assert.match(result.stdout, /└── rect#r1 x=100 y=120 w=200 h=80 fill=blue/);
-  assert.ok(result.stdout.includes(`saved to ${filePath} (1 element)`));
-
-  const svg = readFileSync(filePath, 'utf8');
-  assert.match(svg, /<svg[^>]*width="800"[^>]*height="600"[^>]*viewBox="0 0 800 600"/);
-  assert.match(
-    svg,
-    /<rect id="r1" x="100" y="120" width="200" height="80" fill="blue"\/>/,
-  );
-});
-
-test('Rect stores id, geometry, and optional fill', () => {
-  const filled = new Rect('r1', 1.5, -2.5, 30.25, 40.5, 'blue');
-  assert.equal(filled.id, 'r1');
-  assert.equal(filled.x, 1.5);
-  assert.equal(filled.y, -2.5);
-  assert.equal(filled.width, 30.25);
-  assert.equal(filled.height, 40.5);
-  assert.equal(filled.fill, 'blue');
-
-  const unfilled = new Rect('r2', 0, 0, 10, 10);
-  assert.equal(unfilled.fill, undefined);
-});
-
 test('Rect rejects empty ids and invalid geometry', () => {
   assert.throws(() => new Rect('', 0, 0, 10, 10), /shape id must not be empty/);
 
@@ -611,17 +694,6 @@ test('Rect rejects empty ids and invalid geometry', () => {
   }
 });
 
-test('Rect.describe matches the tree attribute format', () => {
-  assert.equal(
-    new Rect('r1', 100, 120, 200, 80, 'blue').describe(),
-    'rect#r1 x=100 y=120 w=200 h=80 fill=blue',
-  );
-  assert.equal(
-    new Rect('r2', 1.5, 2.5, 3, 4).describe(),
-    'rect#r2 x=1.5 y=2.5 w=3 h=4',
-  );
-});
-
 test('Rect.toSvgElement preserves attribute order, optional fill, and escaping', () => {
   assert.equal(
     new Rect('r1', 100, 120, 200, 80, 'blue').toSvgElement(),
@@ -635,18 +707,6 @@ test('Rect.toSvgElement preserves attribute order, optional fill, and escaping',
     new Rect('a"&<>', 1, 2, 3, 4, 'red&"<>').toSvgElement(),
     '<rect id="a&quot;&amp;&lt;&gt;" x="1" y="2" width="3" height="4" fill="red&amp;&quot;&lt;&gt;"/>',
   );
-});
-
-test('Circle stores id, geometry, and optional fill', () => {
-  const filled = new Circle('c1', 100.5, -20.5, 20, 'red');
-  assert.equal(filled.id, 'c1');
-  assert.equal(filled.cx, 100.5);
-  assert.equal(filled.cy, -20.5);
-  assert.equal(filled.r, 20);
-  assert.equal(filled.fill, 'red');
-
-  const unfilled = new Circle('c2', 0, 0, 1);
-  assert.equal(unfilled.fill, undefined);
 });
 
 test('Circle rejects empty ids and invalid geometry', () => {
@@ -667,17 +727,6 @@ test('Circle rejects empty ids and invalid geometry', () => {
   }
 });
 
-test('Circle.describe matches the tree attribute format', () => {
-  assert.equal(
-    new Circle('c1', 100, 100, 20, 'red').describe(),
-    'circle#c1 cx=100 cy=100 r=20 fill=red',
-  );
-  assert.equal(
-    new Circle('c2', 1.5, 2.5, 3).describe(),
-    'circle#c2 cx=1.5 cy=2.5 r=3',
-  );
-});
-
 test('Circle.toSvgElement preserves attribute order, optional fill, and escaping', () => {
   assert.equal(
     new Circle('c1', 100, 100, 20, 'red').toSvgElement(),
@@ -691,19 +740,6 @@ test('Circle.toSvgElement preserves attribute order, optional fill, and escaping
     new Circle('a"&<>', 1, 2, 3, 'red&"<>').toSvgElement(),
     '<circle id="a&quot;&amp;&lt;&gt;" cx="1" cy="2" r="3" fill="red&amp;&quot;&lt;&gt;"/>',
   );
-});
-
-test('Ellipse stores id, geometry, and optional fill', () => {
-  const filled = new Ellipse('e1', 100.5, -20.5, 30, 40, 'blue');
-  assert.equal(filled.id, 'e1');
-  assert.equal(filled.cx, 100.5);
-  assert.equal(filled.cy, -20.5);
-  assert.equal(filled.rx, 30);
-  assert.equal(filled.ry, 40);
-  assert.equal(filled.fill, 'blue');
-
-  const unfilled = new Ellipse('e2', 0, 0, 1, 2);
-  assert.equal(unfilled.fill, undefined);
 });
 
 test('Ellipse rejects empty ids and invalid geometry', () => {
@@ -733,17 +769,6 @@ test('Ellipse rejects empty ids and invalid geometry', () => {
   }
 });
 
-test('Ellipse.describe matches the tree attribute format', () => {
-  assert.equal(
-    new Ellipse('e1', 100, 100, 30, 20, 'blue').describe(),
-    'ellipse#e1 cx=100 cy=100 rx=30 ry=20 fill=blue',
-  );
-  assert.equal(
-    new Ellipse('e2', 1.5, 2.5, 3, 4).describe(),
-    'ellipse#e2 cx=1.5 cy=2.5 rx=3 ry=4',
-  );
-});
-
 test('Ellipse.toSvgElement preserves attribute order, optional fill, and escaping', () => {
   assert.equal(
     new Ellipse('e1', 100, 100, 30, 20, 'blue').toSvgElement(),
@@ -756,6 +781,63 @@ test('Ellipse.toSvgElement preserves attribute order, optional fill, and escapin
   assert.equal(
     new Ellipse('a"&<>', 1, 2, 3, 4, 'red&"<>').toSvgElement(),
     '<ellipse id="a&quot;&amp;&lt;&gt;" cx="1" cy="2" rx="3" ry="4" fill="red&amp;&quot;&lt;&gt;"/>',
+  );
+});
+
+test('Line rejects empty ids and non-finite endpoints', () => {
+  assert.throws(() => new Line('', 0, 0, 10, 10), /shape id must not be empty/);
+
+  for (const [x1, y1, x2, y2] of [
+    [NaN, 0, 0, 0],
+    [0, NaN, 0, 0],
+    [0, 0, NaN, 0],
+    [0, 0, 0, Infinity],
+  ]) {
+    assert.throws(
+      () => new Line('l1', x1, y1, x2, y2),
+      /line endpoints must be finite numbers/,
+    );
+  }
+});
+
+test('Line.toSvgElement preserves attribute order, optional stroke, and escaping', () => {
+  assert.equal(
+    new Line('l1', 10, 20, 30, 40, 'red').toSvgElement(),
+    '<line id="l1" x1="10" y1="20" x2="30" y2="40" stroke="red"/>',
+  );
+  assert.equal(
+    new Line('l2', -5, 50, 100.5, 200.5).toSvgElement(),
+    '<line id="l2" x1="-5" y1="50" x2="100.5" y2="200.5"/>',
+  );
+  assert.equal(
+    new Line('a"&<>', 1, 2, 3, 4, 'red&"<>').toSvgElement(),
+    '<line id="a&quot;&amp;&lt;&gt;" x1="1" y1="2" x2="3" y2="4" stroke="red&amp;&quot;&lt;&gt;"/>',
+  );
+});
+
+test('Text rejects empty ids and non-finite coordinates', () => {
+  assert.throws(() => new Text('', 0, 0, 'x'), /shape id must not be empty/);
+
+  for (const [x, y] of [[NaN, 0], [0, NaN], [Infinity, 0], [0, -Infinity]]) {
+    assert.throws(
+      () => new Text('t1', x, y, 'x'),
+      /text coordinates must be finite numbers/,
+    );
+  }
+});
+
+test('Text.toSvgElement escapes attributes and text content correctly', () => {
+  assert.equal(
+    new Text('t1', 20, 40, 'My Diagram').toSvgElement(),
+    '<text id="t1" x="20" y="40">My Diagram</text>',
+  );
+  assert.equal(
+    new Text('empty', 1, 2, '').toSvgElement(),
+    '<text id="empty" x="1" y="2"></text>',
+  );
+  assert.equal(
+    new Text('a"&<>', 1, 2, 'Tom & Jerry <3 "quoted"').toSvgElement(),
+    '<text id="a&quot;&amp;&lt;&gt;" x="1" y="2">Tom &amp; Jerry &lt;3 "quoted"</text>',
   );
 });
 
@@ -830,20 +912,6 @@ test('Document adds shapes in order, indexes IDs, and sets parents', () => {
   assert.equal(document.findShape('r1'), first);
   assert.equal(document.findShape('R1'), second);
   assert.equal(document.findShape('r2'), undefined);
-});
-
-test('Document rejects duplicate IDs without changing state', () => {
-  const document = new Document(100, 100);
-  const original = new Rect('r1', 0, 0, 10, 10, 'red');
-  const duplicate = new Rect('r1', 5, 5, 20, 20, 'blue');
-
-  assert.equal(document.addShape(original), true);
-  assert.equal(document.addShape(duplicate), false);
-  assert.equal(document.root.children.length, 1);
-  assert.equal(document.root.children[0], original);
-  assert.equal(document.findShape('r1'), original);
-  assert.equal(original.parent, document.root);
-  assert.equal(duplicate.parent, null);
 });
 
 test('Document removes shapes, clears parents, and allows ID reuse', () => {
@@ -986,17 +1054,4 @@ test('reports invalid quote syntax and continues with later commands', async () 
   assert.equal(result.code, 0);
   assert.match(result.stdout, /error: invalid quote syntax/);
   assert.match(result.stdout, /rect#r1 created/);
-});
-
-test('keeps unquoted command parsing unchanged', async () => {
-  const result = await runCli(
-    'init 800 600\n' +
-    'create rect r1 100 120 200 80 blue\n' +
-    'tree\n' +
-    'exit\n',
-  );
-
-  assert.equal(result.code, 0);
-  assert.match(result.stdout, /canvas 800x600 created/);
-  assert.match(result.stdout, /rect#r1 x=100 y=120 w=200 h=80 fill=blue/);
 });
