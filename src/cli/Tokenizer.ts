@@ -1,3 +1,5 @@
+import { EditorError } from '../errors/EditorError.js';
+
 export class Tokenizer {
   public tokenize(line: string): string[] {
     let index = 0;
@@ -22,7 +24,7 @@ export class Tokenizer {
 
       if (afterQuote) {
         if (!this.isWhitespace(character)) {
-          throw new Error('invalid quote syntax');
+          throw new EditorError('invalid quote syntax');
         }
 
         tokens.push(currentToken);
@@ -47,7 +49,7 @@ export class Tokenizer {
 
       if (character === '"') {
         if (hasToken) {
-          throw new Error('invalid quote syntax');
+          throw new EditorError('invalid quote syntax');
         }
 
         inQuotes = true;
@@ -73,7 +75,7 @@ export class Tokenizer {
     }
 
     if (inQuotes) {
-      throw new Error('unclosed double quote');
+      throw new EditorError('unclosed double quote');
     }
 
     if (afterQuote) {

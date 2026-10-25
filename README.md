@@ -78,5 +78,6 @@ The source layout follows the assignment architecture:
 - `src/model/` — `Shape`, `Rect`, `Document`, container/ID management, and `ShapeFactory`.
 - `src/commands/` — `Command` interface and `CommandRegistry` foundation; concrete edit commands and undo/redo are planned.
 - `src/io/` — SVG serialization and file writing.
+- `src/errors/` — shared `EditorError` type for expected editor errors.
 - `test/` — automated CLI, tokenizer, model, and command-registry tests.
 - `doc/README.md` — architecture and development record.

@@ -27,6 +27,23 @@ function runCli(input) {
 
     let stdout = '';
     let stderr = '';
+    let settled = false;
+    let timer;
+
+    const finish = (action) => {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      clearTimeout(timer);
+      action();
+    };
+
+    timer = setTimeout(() => {
+      child.kill();
+      finish(() => reject(new Error('CLI did not exit within 5000 ms')));
+    }, 5000);
 
     child.stdout.setEncoding('utf8');
     child.stderr.setEncoding('utf8');
@@ -37,9 +54,11 @@ function runCli(input) {
       stderr += chunk;
     });
 
-    child.on('error', reject);
+    child.on('error', (error) => {
+      finish(() => reject(error));
+    });
     child.on('close', (code) => {
-      resolve({ code, stdout, stderr });
+      finish(() => resolve({ code, stdout, stderr }));
     });
 
     child.stdin.end(input);
@@ -56,14 +75,25 @@ function withoutPrompt(output) {
   return output.replaceAll('svg> ', '');
 }
 
-test('prints help, reports unknown commands, and exits', async () => {
+test('prints the exact banner, handles help, unknown commands, and exits', async () => {
   const result = await runCli('help\nunknown\nexit\n');
 
   assert.equal(result.code, 0);
   assert.equal(result.stderr, '');
-  assert.match(result.stdout, /Welcome to SVG Editor CLI/);
+  assert.equal(
+    result.stdout.split('\n')[0],
+    "svg-editor 0.1 — type 'help' for commands",
+  );
+  assert.equal(
+    (result.stdout.match(/svg-editor 0\.1 — type 'help' for commands/g) ?? []).length,
+    1,
+  );
+  assert.doesNotMatch(result.stdout, /Welcome to SVG Editor CLI/);
+  assert.doesNotMatch(result.stdout, /Type "help" for available commands/);
   assert.match(result.stdout, /create rect <id> <x> <y> <w> <h> \[fill\]/);
-  assert.match(result.stdout, /error: unknown command: unknown/);
+  assert.match(result.stdout, /^error: unknown command: unknown$/m);
+  assert.doesNotMatch(result.stdout, /error: error:/);
+  assert.doesNotMatch(result.stdout, /svg> /);
   assert.match(result.stdout, /Goodbye\./);
 });
 
@@ -123,7 +153,73 @@ test('create, tree, and save require an initialized document', async () => {
   assert.equal(result.code, 0);
   const errors = result.stdout.match(/error: no document\. use 'init' or 'read' first/g);
   assert.equal(errors?.length, 3);
+  assert.doesNotMatch(result.stdout, /error: error:/);
   assert.doesNotMatch(result.stdout, /rect#r1 created/);
+});
+
+test('prints exactly one error prefix per failed command', async () => {
+  const result = await runCli(
+    'init\n' +
+    'create rect r1 0 0 0 10\n' +
+    'create rect r1 0 0 10 10\n' +
+    'create rect r1 5 5 10 10\n' +
+    'save "unfinished.svg\n' +
+    'missing\n' +
+    'exit\n',
+  );
+
+  assert.equal(result.code, 0);
+  const errorLines = result.stdout
+    .split('\n')
+    .filter((line) => line.startsWith('error:'));
+  assert.deepEqual(errorLines, [
+    'error: width must be positive',
+    'error: id already exists: r1',
+    'error: unclosed double quote',
+    'error: unknown command: missing',
+  ]);
+  assert.doesNotMatch(result.stdout, /error: error:/);
+});
+
+test('executes multi-line piped input and exits cleanly on EOF', async () => {
+  const result = await runCli(
+    'init 320 240\n' +
+    'create rect r1 10 20 30 40\n' +
+    'tree\n',
+  );
+
+  assert.equal(result.code, 0);
+  assert.equal(result.stderr, '');
+  assert.match(result.stdout, /canvas 320x240 created/);
+  assert.match(result.stdout, /svg \(320x240\)/);
+  assert.match(result.stdout, /└── rect#r1 x=10 y=20 w=30 h=40/);
+  assert.match(result.stdout, /Goodbye\./);
+  assert.doesNotMatch(result.stdout, /error:/);
+  assert.doesNotMatch(result.stdout, /svg> /);
+});
+
+test('failed commands leave the document unchanged', async () => {
+  const result = await runCli(
+    'init 200 100\n' +
+    'create rect keep 1 2 3 4\n' +
+    'init 0 0\n' +
+    'create rect keep 9 9 9 9\n' +
+    'create rect bad 0 0 -1 5\n' +
+    'tree\n' +
+    'exit\n',
+  );
+
+  assert.equal(result.code, 0);
+  const lines = result.stdout.split('\n');
+  const treeIndex = lines.indexOf('svg (200x100)');
+  assert.notEqual(treeIndex, -1);
+  assert.equal(lines[treeIndex + 1], '└── rect#keep x=1 y=2 w=3 h=4');
+  assert.equal(
+    lines.filter((line) => line.startsWith('├──') || line.startsWith('└──')).length,
+    1,
+  );
+  assert.match(result.stdout, /error: width must be positive/);
+  assert.match(result.stdout, /error: id already exists: keep/);
 });
 
 test('creates rectangles and shows them in insertion order', async () => {

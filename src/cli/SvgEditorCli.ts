@@ -1,4 +1,5 @@
 import { createInterface, type Interface } from 'node:readline';
+import { EditorError } from '../errors/EditorError.js';
 import { Document } from '../model/Document.js';
 import { ShapeFactory } from '../model/ShapeFactory.js';
 import { SvgFileWriter } from '../io/SvgFileWriter.js';
@@ -8,6 +9,7 @@ import { TreeFormatter } from './TreeFormatter.js';
 
 export class SvgEditorCli {
   private readonly lineReader: Interface;
+  private readonly interactive: boolean;
   private readonly tokenizer = new Tokenizer();
   private readonly treeFormatter = new TreeFormatter();
   private readonly shapeFactory = new ShapeFactory();
@@ -17,6 +19,7 @@ export class SvgEditorCli {
   private closing = false;
 
   constructor() {
+    this.interactive = process.stdin.isTTY === true;
     this.lineReader = createInterface({
       input: process.stdin,
       output: process.stdout,
@@ -25,8 +28,7 @@ export class SvgEditorCli {
   }
 
   public run(): void {
-    console.log('Welcome to SVG Editor CLI.');
-    console.log('Type "help" for available commands, or "exit" to quit.');
+    console.log("svg-editor 0.1 — type 'help' for commands");
 
     this.lineReader.on('line', (line: string) => {
       this.handleLine(line);
@@ -36,7 +38,7 @@ export class SvgEditorCli {
       console.log('Goodbye.');
     });
 
-    this.lineReader.prompt();
+    this.prompt();
   }
 
   private handleLine(line: string): void {
@@ -44,7 +46,7 @@ export class SvgEditorCli {
       const tokens = this.tokenizer.tokenize(line);
 
       if (tokens.length === 0) {
-        this.lineReader.prompt();
+        this.prompt();
         return;
       }
 
@@ -55,6 +57,12 @@ export class SvgEditorCli {
     }
 
     if (!this.closing) {
+      this.prompt();
+    }
+  }
+
+  private prompt(): void {
+    if (this.interactive) {
       this.lineReader.prompt();
     }
   }
@@ -84,34 +92,24 @@ export class SvgEditorCli {
         this.save(args);
         return;
       default:
-        console.log(`error: unknown command: ${name}`);
+        throw new EditorError(`unknown command: ${name}`);
     }
   }
 
   private init(args: string[]): void {
     if (args.length > 2) {
-      this.printUsageError('init [w] [h]');
-      return;
+      this.failUsage('init [w] [h]');
     }
 
     const width = args.length >= 1 ? this.parseNumber(args[0], 'width') : 800;
-    if (width === null) {
-      return;
-    }
-
     const height = args.length >= 2 ? this.parseNumber(args[1], 'height') : 600;
-    if (height === null) {
-      return;
-    }
 
     if (width <= 0) {
-      console.log('error: width must be positive');
-      return;
+      throw new EditorError('width must be positive');
     }
 
     if (height <= 0) {
-      console.log('error: height must be positive');
-      return;
+      throw new EditorError('height must be positive');
     }
 
     this.document = new Document(width, height);
@@ -120,66 +118,41 @@ export class SvgEditorCli {
 
   private create(args: string[]): void {
     const document = this.requireDocument();
-    if (document === null) {
-      return;
-    }
 
     if (args.length === 0) {
-      this.printUsageError('create rect <id> <x> <y> <w> <h> [fill]');
-      return;
+      this.failUsage('create rect <id> <x> <y> <w> <h> [fill]');
     }
 
     const shapeType = args[0];
     if (!this.shapeFactory.supports(shapeType)) {
-      console.log(`error: unknown shape type: ${shapeType} (is the plugin loaded?)`);
-      return;
+      throw new EditorError(`unknown shape type: ${shapeType} (is the plugin loaded?)`);
     }
 
     if (args.length < 6 || args.length > 7) {
-      this.printUsageError('create rect <id> <x> <y> <w> <h> [fill]');
-      return;
+      this.failUsage('create rect <id> <x> <y> <w> <h> [fill]');
     }
 
     const id = args[1];
     if (document.hasShape(id)) {
-      console.log(`error: id already exists: ${id}`);
-      return;
+      throw new EditorError(`id already exists: ${id}`);
     }
 
     const x = this.parseNumber(args[2], 'x');
-    if (x === null) {
-      return;
-    }
-
     const y = this.parseNumber(args[3], 'y');
-    if (y === null) {
-      return;
-    }
-
     const width = this.parseNumber(args[4], 'width');
-    if (width === null) {
-      return;
-    }
-
     const height = this.parseNumber(args[5], 'height');
-    if (height === null) {
-      return;
-    }
 
     if (width <= 0) {
-      console.log('error: width must be positive');
-      return;
+      throw new EditorError('width must be positive');
     }
 
     if (height <= 0) {
-      console.log('error: height must be positive');
-      return;
+      throw new EditorError('height must be positive');
     }
 
     const shape = this.shapeFactory.createRect(id, x, y, width, height, args[6]);
     if (!document.addShape(shape)) {
-      console.log(`error: id already exists: ${id}`);
-      return;
+      throw new EditorError(`id already exists: ${id}`);
     }
 
     console.log(`rect#${id} created`);
@@ -187,13 +160,9 @@ export class SvgEditorCli {
 
   private tree(args: string[]): void {
     const document = this.requireDocument();
-    if (document === null) {
-      return;
-    }
 
     if (args.length > 0) {
-      this.printUsageError('tree');
-      return;
+      this.failUsage('tree');
     }
 
     console.log(this.treeFormatter.format(document));
@@ -201,18 +170,13 @@ export class SvgEditorCli {
 
   private save(args: string[]): void {
     const document = this.requireDocument();
-    if (document === null) {
-      return;
-    }
 
     if (args.length > 1) {
-      this.printUsageError('save [file.svg]');
-      return;
+      this.failUsage('save [file.svg]');
     }
 
     if (args.length === 0) {
-      console.log("error: no file path. use 'save <file.svg>'");
-      return;
+      throw new EditorError("no file path. use 'save <file.svg>'");
     }
 
     const filePath = args[0];
@@ -221,36 +185,33 @@ export class SvgEditorCli {
     try {
       this.svgFileWriter.write(filePath, content);
     } catch {
-      console.log(`error: cannot write file: ${filePath}`);
-      return;
+      throw new EditorError(`cannot write file: ${filePath}`);
     }
 
     const count = document.root.children.length;
     console.log(`saved to ${filePath} (${count} element${count === 1 ? '' : 's'})`);
   }
 
-  private requireDocument(): Document | null {
+  private requireDocument(): Document {
     if (this.document === null) {
-      console.log("error: no document. use 'init' or 'read' first");
-      return null;
+      throw new EditorError("no document. use 'init' or 'read' first");
     }
 
     return this.document;
   }
 
-  private parseNumber(token: string, fieldName: string): number | null {
+  private parseNumber(token: string, fieldName: string): number {
     const value = Number(token);
 
     if (!Number.isFinite(value)) {
-      console.log(`error: invalid number for ${fieldName}: ${token}`);
-      return null;
+      throw new EditorError(`invalid number for ${fieldName}: ${token}`);
     }
 
     return value;
   }
 
-  private printUsageError(usage: string): void {
-    console.log(`error: usage: ${usage}`);
+  private failUsage(usage: string): never {
+    throw new EditorError(`usage: ${usage}`);
   }
 
   private printHelp(): void {
