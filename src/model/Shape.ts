@@ -1,5 +1,8 @@
+import type { ShapeContainer } from './ShapeContainer.js';
+
 export abstract class Shape {
   private readonly shapeId: string;
+  private parentContainer: ShapeContainer | null = null;
 
   protected constructor(id: string) {
     if (id.length === 0) {
@@ -11,6 +14,30 @@ export abstract class Shape {
 
   public get id(): string {
     return this.shapeId;
+  }
+
+  public get parent(): ShapeContainer | null {
+    return this.parentContainer;
+  }
+
+  /** @internal 仅供容器的受控添加流程调用。 */
+  public attachTo(container: ShapeContainer): boolean {
+    if (this.parentContainer !== null) {
+      return false;
+    }
+
+    this.parentContainer = container;
+    return true;
+  }
+
+  /** @internal 仅供容器的受控移除流程调用。 */
+  public detachFrom(container: ShapeContainer): boolean {
+    if (this.parentContainer !== container) {
+      return false;
+    }
+
+    this.parentContainer = null;
+    return true;
   }
 
   public abstract describe(): string;

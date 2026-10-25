@@ -1,16 +1,17 @@
-import { Canvas } from '../model/Canvas.js';
+import { Document } from '../model/Document.js';
 
 export class TreeFormatter {
-  public format(canvas: Canvas): string {
-    const lines: string[] = [`svg (${canvas.width}x${canvas.height})`];
+  public format(document: Document): string {
+    const children = document.root.children;
+    const lines: string[] = [`svg (${document.width}x${document.height})`];
 
-    if (canvas.shapes.length === 0) {
+    if (children.length === 0) {
       lines.push('(empty)');
       return lines.join('\n');
     }
 
-    canvas.shapes.forEach((shape, index) => {
-      const branch = index === canvas.shapes.length - 1 ? '└──' : '├──';
+    children.forEach((shape, index) => {
+      const branch = index === children.length - 1 ? '└──' : '├──';
       lines.push(`${branch} ${shape.describe()}`);
     });
 

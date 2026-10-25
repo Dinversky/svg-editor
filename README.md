@@ -65,7 +65,7 @@ The last command writes `demo.svg` in the current working directory. Enter
 The source layout follows the assignment architecture:
 
 - `src/cli/` — entry point, interactive loop, command parsing, and tree output.
-- `src/model/` — `Shape`, `Rect`, `Canvas`, and `ShapeFactory`.
+- `src/model/` — `Shape`, `Rect`, `Document`, container/ID management, and `ShapeFactory`.
 - `src/commands/` — editable commands and undo/redo (planned).
 - `src/io/` — SVG serialization and file writing.
 - `test/` — automated CLI and model tests.

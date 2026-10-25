@@ -8,6 +8,7 @@ import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 const require = createRequire(import.meta.url);
+const { Document } = require('../dist/model/Document.js');
 const { Rect } = require('../dist/model/Rect.js');
 
 const cliPath = path.join(
@@ -380,4 +381,128 @@ test('preserves negative and out-of-canvas rectangle geometry', async (t) => {
   assert.match(svg, /<rect id="negative" x="-10" y="-20" width="30" height="40"\/>/);
   assert.match(svg, /<rect id="partial" x="50" y="50" width="100" height="100"\/>/);
   assert.match(svg, /<rect id="outside" x="200" y="200" width="10" height="10"\/>/);
+});
+
+test('Document exposes dimensions, an empty root, and no initial IDs', () => {
+  const document = new Document(800, 600);
+
+  assert.equal(document.width, 800);
+  assert.equal(document.height, 600);
+  assert.equal(document.root.children.length, 0);
+  assert.equal(document.findShape('r1'), undefined);
+  assert.equal(document.hasShape('r1'), false);
+});
+
+test('Document rejects invalid canvas dimensions', () => {
+  for (const [width, height] of [
+    [0, 600],
+    [-1, 600],
+    [NaN, 600],
+    [Infinity, 600],
+    [800, 0],
+    [800, -1],
+    [800, NaN],
+    [800, -Infinity],
+  ]) {
+    assert.throws(
+      () => new Document(width, height),
+      /canvas width and height must be positive/,
+    );
+  }
+});
+
+test('Document adds shapes in order, indexes IDs, and sets parents', () => {
+  const document = new Document(100, 100);
+  const first = new Rect('r1', 0, 0, 10, 10);
+  const second = new Rect('R1', 20, 20, 10, 10);
+
+  assert.equal(document.addShape(first), true);
+  assert.equal(document.addShape(second), true);
+  assert.equal(document.root.children.length, 2);
+  assert.equal(document.root.children[0], first);
+  assert.equal(document.root.children[1], second);
+  assert.equal(first.parent, document.root);
+  assert.equal(second.parent, document.root);
+  assert.equal(document.findShape('r1'), first);
+  assert.equal(document.findShape('R1'), second);
+  assert.equal(document.findShape('r2'), undefined);
+});
+
+test('Document rejects duplicate IDs without changing state', () => {
+  const document = new Document(100, 100);
+  const original = new Rect('r1', 0, 0, 10, 10, 'red');
+  const duplicate = new Rect('r1', 5, 5, 20, 20, 'blue');
+
+  assert.equal(document.addShape(original), true);
+  assert.equal(document.addShape(duplicate), false);
+  assert.equal(document.root.children.length, 1);
+  assert.equal(document.root.children[0], original);
+  assert.equal(document.findShape('r1'), original);
+  assert.equal(original.parent, document.root);
+  assert.equal(duplicate.parent, null);
+});
+
+test('Document removes shapes, clears parents, and allows ID reuse', () => {
+  const document = new Document(100, 100);
+  const original = new Rect('r1', 0, 0, 10, 10);
+
+  assert.equal(document.addShape(original), true);
+  assert.equal(document.removeShape(original), true);
+  assert.equal(document.root.children.length, 0);
+  assert.equal(document.findShape('r1'), undefined);
+  assert.equal(original.parent, null);
+
+  const replacement = new Rect('r1', 20, 20, 10, 10);
+  assert.equal(document.addShape(replacement), true);
+  assert.equal(document.findShape('r1'), replacement);
+  assert.equal(replacement.parent, document.root);
+});
+
+test('Document rejects duplicate and cross-container attachment', () => {
+  const firstDocument = new Document(100, 100);
+  const secondDocument = new Document(100, 100);
+  const shape = new Rect('r1', 0, 0, 10, 10);
+
+  assert.equal(firstDocument.addShape(shape), true);
+  assert.equal(firstDocument.addShape(shape), false);
+  assert.equal(secondDocument.addShape(shape), false);
+  assert.equal(firstDocument.root.children.length, 1);
+  assert.equal(firstDocument.root.children[0], shape);
+  assert.equal(shape.parent, firstDocument.root);
+  assert.equal(secondDocument.root.children.length, 0);
+  assert.equal(secondDocument.findShape('r1'), undefined);
+
+  const missing = new Rect('r9', 0, 0, 10, 10);
+  assert.equal(firstDocument.removeShape(missing), false);
+  assert.equal(firstDocument.root.children.length, 1);
+  assert.equal(firstDocument.findShape('r1'), shape);
+  assert.equal(missing.parent, null);
+
+  assert.equal(firstDocument.removeShape(shape), true);
+  assert.equal(firstDocument.removeShape(shape), false);
+  assert.equal(firstDocument.root.children.length, 0);
+  assert.equal(firstDocument.findShape('r1'), undefined);
+  assert.equal(shape.parent, null);
+});
+
+test('removing a shape preserves the order and index of the remaining shapes', () => {
+  const document = new Document(100, 100);
+  const first = new Rect('a', 0, 0, 1, 1);
+  const second = new Rect('b', 0, 0, 1, 1);
+  const third = new Rect('c', 0, 0, 1, 1);
+
+  assert.equal(document.addShape(first), true);
+  assert.equal(document.addShape(second), true);
+  assert.equal(document.addShape(third), true);
+  assert.equal(document.removeShape(second), true);
+
+  assert.equal(document.root.children.length, 2);
+  assert.equal(document.root.children[0], first);
+  assert.equal(document.root.children[1], third);
+  assert.equal(document.findShape('b'), undefined);
+  assert.equal(document.findShape('a'), first);
+  assert.equal(document.findShape('c'), third);
+  assert.equal(first.parent, document.root);
+  assert.equal(second.parent, null);
+  assert.equal(third.parent, document.root);
 });

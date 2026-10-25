@@ -1,5 +1,5 @@
 import { createInterface, type Interface } from 'node:readline';
-import { Canvas } from '../model/Canvas.js';
+import { Document } from '../model/Document.js';
 import { ShapeFactory } from '../model/ShapeFactory.js';
 import { SvgFileWriter } from '../io/SvgFileWriter.js';
 import { SvgSerializer } from '../io/SvgSerializer.js';
@@ -11,7 +11,7 @@ export class SvgEditorCli {
   private readonly shapeFactory = new ShapeFactory();
   private readonly svgSerializer = new SvgSerializer();
   private readonly svgFileWriter = new SvgFileWriter();
-  private document: Canvas | null = null;
+  private document: Document | null = null;
   private closing = false;
 
   constructor() {
@@ -113,7 +113,7 @@ export class SvgEditorCli {
       return;
     }
 
-    this.document = new Canvas(width, height);
+    this.document = new Document(width, height);
     console.log(`canvas ${width}x${height} created`);
   }
 
@@ -176,7 +176,11 @@ export class SvgEditorCli {
     }
 
     const shape = this.shapeFactory.createRect(id, x, y, width, height, args[6]);
-    document.addShape(shape);
+    if (!document.addShape(shape)) {
+      console.log(`error: id already exists: ${id}`);
+      return;
+    }
+
     console.log(`rect#${id} created`);
   }
 
@@ -220,11 +224,11 @@ export class SvgEditorCli {
       return;
     }
 
-    const count = document.shapes.length;
+    const count = document.root.children.length;
     console.log(`saved to ${filePath} (${count} element${count === 1 ? '' : 's'})`);
   }
 
-  private requireDocument(): Canvas | null {
+  private requireDocument(): Document | null {
     if (this.document === null) {
       console.log("error: no document. use 'init' or 'read' first");
       return null;
