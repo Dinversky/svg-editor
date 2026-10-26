@@ -39,7 +39,20 @@ If relevant uncommitted changes, unexpected repository state, conflicting instru
 - Do not overwrite, discard, reset, or otherwise disturb existing changes.
 - Do not start implementation if the conflict could affect the task.
 - Report the relevant findings and ask for clarification when necessary.
+### Implementation Plan Before Changes
 
+After completing the initial repository and code inspection, formulate a concise implementation plan before modifying files.
+
+The plan should identify:
+- The problem and intended design.
+- The main implementation steps and affected files.
+- The tests and validation needed.
+
+Keep the plan proportional to the task size. For a small task, a few concise steps are sufficient.
+
+If a necessary requirement or design decision remains ambiguous, ask the user before implementation rather than inventing a premise. Otherwise, proceed with the plan without requiring an additional approval round.
+
+Do not use the planning step as a substitute for inspecting the actual code.
 ### 2.2 Small, Verifiable Tasks
 
 - Work on one small, verifiable task at a time.

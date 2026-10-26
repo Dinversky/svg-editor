@@ -8,6 +8,7 @@ import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 const require = createRequire(import.meta.url);
+const { CommandParser } = require('../dist/cli/CommandParser.js');
 const { Circle } = require('../dist/model/Circle.js');
 const { Document } = require('../dist/model/Document.js');
 const { Ellipse } = require('../dist/model/Ellipse.js');
@@ -717,6 +718,157 @@ test('rejects missing or non-container in targets without mutation', async (t) =
       '</svg>',
       '',
     ].join('\n'),
+  );
+});
+
+test('accepts named and hex colors for fill and stroke', async (t) => {
+  const tempDir = createTempDir(t);
+  const filePath = path.join(tempDir, 'colors.svg');
+
+  const result = await runCli(
+    'init 500 400\n' +
+    'create rect named 0 0 10 10 navy\n' +
+    'create rect hex6 0 20 10 10 #4a90d9\n' +
+    'create rect hex3 0 40 10 10 #ABC\n' +
+    'create rect cased 0 60 10 10 Red\n' +
+    'create circle c1 50 50 5 darkseagreen\n' +
+    'create line l1 0 0 100 100 #f5a623\n' +
+    `save ${filePath}\n` +
+    'exit\n',
+  );
+
+  assert.equal(result.code, 0);
+  assert.doesNotMatch(result.stdout, /error:/);
+  assert.match(result.stdout, /rect#named created/);
+  assert.match(result.stdout, /rect#hex6 created/);
+  assert.match(result.stdout, /rect#hex3 created/);
+  assert.match(result.stdout, /rect#cased created/);
+  assert.ok(result.stdout.includes(`saved to ${filePath} (6 elements)`));
+
+  const svg = readFileSync(filePath, 'utf8');
+  assert.match(svg, /<rect id="named"[^>]* fill="navy"/);
+  assert.match(svg, /<rect id="hex6"[^>]* fill="#4a90d9"/);
+  assert.match(svg, /<rect id="hex3"[^>]* fill="#ABC"/);
+  assert.match(svg, /<rect id="cased"[^>]* fill="Red"/);
+  assert.match(svg, /<circle id="c1"[^>]* fill="darkseagreen"/);
+  assert.match(svg, /<line id="l1"[^>]* stroke="#f5a623"/);
+});
+
+test('rejects invalid colors without changing the document', async () => {
+  const result = await runCli(
+    'init\n' +
+    'create rect keep 0 0 10 10\n' +
+    'create rect bad-named 1 2 3 4 notacolor\n' +
+    'create rect bad-hex-short 1 2 3 4 #ff\n' +
+    'create rect bad-hex-chars 1 2 3 4 #gggggg\n' +
+    'create circle bad-circle 1 2 3 12red\n' +
+    'create line bad-stroke 0 0 1 1 nope\n' +
+    'tree\n' +
+    'exit\n',
+  );
+
+  assert.equal(result.code, 0);
+  assert.match(result.stdout, /error: invalid color for fill: notacolor/);
+  assert.match(result.stdout, /error: invalid color for fill: #ff$/m);
+  assert.match(result.stdout, /error: invalid color for fill: #gggggg/);
+  assert.match(result.stdout, /error: invalid color for fill: 12red/);
+  assert.match(result.stdout, /error: invalid color for stroke: nope/);
+  assert.doesNotMatch(result.stdout, /error: error:/);
+
+  const lines = result.stdout.split('\n');
+  assert.ok(lines.includes('└── rect#keep x=0 y=0 w=10 h=10'));
+  assert.equal(
+    lines.filter((line) => line.startsWith('├──') || line.startsWith('└──')).length,
+    1,
+  );
+});
+
+test('CommandParser parses create commands into structured results', () => {
+  const parser = new CommandParser();
+
+  const rect = parser.parseCreate(
+    ['rect', 'r1', '1', '2', '3', '4', 'red', 'in', 'g1'],
+  );
+  assert.equal(rect.shapeType, 'rect');
+  assert.equal(rect.id, 'r1');
+  assert.deepEqual(rect.creation.numbers, [1, 2, 3, 4]);
+  assert.equal(rect.creation.fill, 'red');
+  assert.equal(rect.creation.stroke, undefined);
+  assert.equal(rect.creation.content, undefined);
+  assert.equal(rect.containerId, 'g1');
+
+  const line = parser.parseCreate(['line', 'l1', '0', '0', '1', '1']);
+  assert.equal(line.id, 'l1');
+  assert.deepEqual(line.creation.numbers, [0, 0, 1, 1]);
+  assert.equal(line.creation.stroke, undefined);
+  assert.equal(line.containerId, undefined);
+
+  const text = parser.parseCreate(['text', 't1', '5', '6', 'Hello World']);
+  assert.deepEqual(text.creation.numbers, [5, 6]);
+  assert.equal(text.creation.content, 'Hello World');
+
+  const group = parser.parseCreate(['g', 'g1']);
+  assert.equal(group.shapeType, 'g');
+  assert.equal(group.id, 'g1');
+  assert.equal(group.creation.numbers, undefined);
+
+  assert.throws(
+    () => parser.parseCreate(['hexagon', 'h1', '0', '0', '10']),
+    { message: 'unknown shape type: hexagon (is the plugin loaded?)' },
+  );
+  assert.throws(
+    () => parser.parseCreate(['rect', 'r1', '1', '2']),
+    { message: 'usage: create rect <id> <x> <y> <w> <h> [fill] [in <group>]' },
+  );
+  assert.throws(
+    () => parser.parseCreate([]),
+    { message: 'usage: create <type> <id> [params] [in <group>]' },
+  );
+  assert.throws(
+    () => parser.parseCreate(['line', 'l1', '0', '0', '1', '1', 'notacolor']),
+    { message: 'invalid color for stroke: notacolor' },
+  );
+  assert.throws(
+    () => parser.parseCreate(['circle', 'c1', '1', '2', '0']),
+    { message: 'radius must be positive' },
+  );
+});
+
+test('CommandParser parses init, tree, and save arguments', () => {
+  const parser = new CommandParser();
+
+  assert.deepEqual(parser.parseInit([]), { width: 800, height: 600 });
+  assert.deepEqual(parser.parseInit(['1024.5', '768']), {
+    width: 1024.5,
+    height: 768,
+  });
+  assert.throws(
+    () => parser.parseInit(['abc', '300']),
+    { message: 'invalid number for width: abc' },
+  );
+  assert.throws(
+    () => parser.parseInit(['0', '300']),
+    { message: 'width must be positive' },
+  );
+  assert.throws(
+    () => parser.parseInit(['1', '2', '3']),
+    { message: 'usage: init [w] [h]' },
+  );
+
+  parser.parseTree([]);
+  assert.throws(
+    () => parser.parseTree(['x']),
+    { message: 'usage: tree' },
+  );
+
+  assert.equal(parser.parseSave(['a.svg']), 'a.svg');
+  assert.throws(
+    () => parser.parseSave([]),
+    { message: "no file path. use 'save <file.svg>'" },
+  );
+  assert.throws(
+    () => parser.parseSave(['a.svg', 'b.svg']),
+    { message: 'usage: save [file.svg]' },
   );
 });
 

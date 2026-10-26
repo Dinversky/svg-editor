@@ -16,6 +16,9 @@ circles, ellipses, lines, and text. The implemented commands are:
 - `create g <id>` — add an empty group.
 - All `create` commands accept an optional trailing `in <groupId>` to add
   the new shape to an existing group; without it the shape is added to the root.
+- Color parameters (`fill`/`stroke`) accept SVG color keywords (e.g. `red`,
+  case-insensitive) and 3/6-digit hex forms (`#fff`, `#ff0000`); invalid colors
+  are rejected with a single-line error.
 - `tree` — display the canvas and its shapes in document order.
 - `save [file.svg]` — serialize the canvas to SVG and write it to a file.
 - `help` / `exit`.

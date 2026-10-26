@@ -6,6 +6,7 @@ import type { ShapeContainer } from '../model/ShapeContainer.js';
 import { ShapeFactory } from '../model/ShapeFactory.js';
 import { SvgFileWriter } from '../io/SvgFileWriter.js';
 import { SvgSerializer } from '../io/SvgSerializer.js';
+import { CommandParser, type ParsedCreate } from './CommandParser.js';
 import { Tokenizer } from './Tokenizer.js';
 import { TreeFormatter } from './TreeFormatter.js';
 
@@ -13,6 +14,7 @@ export class SvgEditorCli {
   private readonly lineReader: Interface;
   private readonly interactive: boolean;
   private readonly tokenizer = new Tokenizer();
+  private readonly commandParser = new CommandParser();
   private readonly treeFormatter = new TreeFormatter();
   private readonly shapeFactory = new ShapeFactory();
   private readonly svgSerializer = new SvgSerializer();
@@ -99,20 +101,7 @@ export class SvgEditorCli {
   }
 
   private init(args: string[]): void {
-    if (args.length > 2) {
-      this.failUsage('init [w] [h]');
-    }
-
-    const width = args.length >= 1 ? this.parseNumber(args[0], 'width') : 800;
-    const height = args.length >= 2 ? this.parseNumber(args[1], 'height') : 600;
-
-    if (width <= 0) {
-      throw new EditorError('width must be positive');
-    }
-
-    if (height <= 0) {
-      throw new EditorError('height must be positive');
-    }
+    const { width, height } = this.commandParser.parseInit(args);
 
     this.document = new Document(width, height);
     console.log(`canvas ${width}x${height} created`);
@@ -120,69 +109,31 @@ export class SvgEditorCli {
 
   private create(args: string[]): void {
     const document = this.requireDocument();
+    const parsed = this.commandParser.parseCreate(args);
 
-    if (args.length === 0) {
-      this.failUsage('create <type> <id> [params] [in <group>]');
+    if (document.hasShape(parsed.id)) {
+      throw new EditorError(`id already exists: ${parsed.id}`);
     }
 
-    const shapeType = args[0];
-    if (!this.shapeFactory.has(shapeType)) {
-      this.failUnknownShapeType(shapeType);
+    const target = this.resolveContainer(document, parsed.containerId);
+    const shape = this.createShape(document, parsed);
+    if (!target.add(shape)) {
+      throw new EditorError(`id already exists: ${parsed.id}`);
     }
 
-    const { shapeArgs, containerId } = this.splitContainerClause(args);
-    const target = this.resolveContainer(document, containerId);
-    const shape = this.buildShape(document, target, shapeType, shapeArgs);
-    const location = containerId === undefined ? '' : ` in g#${containerId}`;
-
-    console.log(`${shapeType}#${shape.id} created${location}`);
+    const location = parsed.containerId === undefined
+      ? ''
+      : ` in g#${parsed.containerId}`;
+    console.log(`${parsed.shapeType}#${shape.id} created${location}`);
   }
 
-  private buildShape(
-    document: Document,
-    target: ShapeContainer,
-    shapeType: string,
-    args: string[],
-  ): Shape {
-    if (shapeType === 'rect') {
-      return this.createRect(document, target, args);
+  private createShape(document: Document, parsed: ParsedCreate): Shape {
+    // g 的创建器需要文档级 registry，因此经由 Document.createGroup 委托工厂。
+    if (parsed.shapeType === 'g') {
+      return document.createGroup(parsed.id);
     }
 
-    if (shapeType === 'circle') {
-      return this.createCircle(document, target, args);
-    }
-
-    if (shapeType === 'ellipse') {
-      return this.createEllipse(document, target, args);
-    }
-
-    if (shapeType === 'line') {
-      return this.createLine(document, target, args);
-    }
-
-    if (shapeType === 'text') {
-      return this.createText(document, target, args);
-    }
-
-    if (shapeType === 'g') {
-      return this.createGroup(document, target, args);
-    }
-
-    return this.failUnknownShapeType(shapeType);
-  }
-
-  private splitContainerClause(args: string[]): {
-    shapeArgs: string[];
-    containerId?: string;
-  } {
-    if (args.length >= 3 && args[args.length - 2] === 'in') {
-      return {
-        shapeArgs: args.slice(0, -2),
-        containerId: args[args.length - 1],
-      };
-    }
-
-    return { shapeArgs: args };
+    return this.shapeFactory.create(parsed.shapeType, parsed.creation);
   }
 
   private resolveContainer(
@@ -206,223 +157,16 @@ export class SvgEditorCli {
     return container;
   }
 
-  private createRect(
-    document: Document,
-    target: ShapeContainer,
-    args: string[],
-  ): Shape {
-    if (args.length < 6 || args.length > 7) {
-      this.failUsage('create rect <id> <x> <y> <w> <h> [fill] [in <group>]');
-    }
-
-    const id = args[1];
-    if (document.hasShape(id)) {
-      throw new EditorError(`id already exists: ${id}`);
-    }
-
-    const x = this.parseNumber(args[2], 'x');
-    const y = this.parseNumber(args[3], 'y');
-    const width = this.parseNumber(args[4], 'width');
-    const height = this.parseNumber(args[5], 'height');
-
-    if (width <= 0) {
-      throw new EditorError('width must be positive');
-    }
-
-    if (height <= 0) {
-      throw new EditorError('height must be positive');
-    }
-
-    const shape = this.shapeFactory.create('rect', {
-      id,
-      numbers: [x, y, width, height],
-      fill: args[6],
-    });
-    if (!target.add(shape)) {
-      throw new EditorError(`id already exists: ${id}`);
-    }
-
-    return shape;
-  }
-
-  private createCircle(
-    document: Document,
-    target: ShapeContainer,
-    args: string[],
-  ): Shape {
-    if (args.length < 5 || args.length > 6) {
-      this.failUsage('create circle <id> <cx> <cy> <r> [fill] [in <group>]');
-    }
-
-    const id = args[1];
-    if (document.hasShape(id)) {
-      throw new EditorError(`id already exists: ${id}`);
-    }
-
-    const cx = this.parseNumber(args[2], 'cx');
-    const cy = this.parseNumber(args[3], 'cy');
-    const radius = this.parseNumber(args[4], 'r');
-
-    if (radius <= 0) {
-      throw new EditorError('radius must be positive');
-    }
-
-    const shape = this.shapeFactory.create('circle', {
-      id,
-      numbers: [cx, cy, radius],
-      fill: args[5],
-    });
-    if (!target.add(shape)) {
-      throw new EditorError(`id already exists: ${id}`);
-    }
-
-    return shape;
-  }
-
-  private createEllipse(
-    document: Document,
-    target: ShapeContainer,
-    args: string[],
-  ): Shape {
-    if (args.length < 6 || args.length > 7) {
-      this.failUsage('create ellipse <id> <cx> <cy> <rx> <ry> [fill] [in <group>]');
-    }
-
-    const id = args[1];
-    if (document.hasShape(id)) {
-      throw new EditorError(`id already exists: ${id}`);
-    }
-
-    const cx = this.parseNumber(args[2], 'cx');
-    const cy = this.parseNumber(args[3], 'cy');
-    const rx = this.parseNumber(args[4], 'rx');
-    const ry = this.parseNumber(args[5], 'ry');
-
-    if (rx <= 0) {
-      throw new EditorError('rx must be positive');
-    }
-
-    if (ry <= 0) {
-      throw new EditorError('ry must be positive');
-    }
-
-    const shape = this.shapeFactory.create('ellipse', {
-      id,
-      numbers: [cx, cy, rx, ry],
-      fill: args[6],
-    });
-    if (!target.add(shape)) {
-      throw new EditorError(`id already exists: ${id}`);
-    }
-
-    return shape;
-  }
-
-  private createLine(
-    document: Document,
-    target: ShapeContainer,
-    args: string[],
-  ): Shape {
-    if (args.length < 6 || args.length > 7) {
-      this.failUsage('create line <id> <x1> <y1> <x2> <y2> [stroke] [in <group>]');
-    }
-
-    const id = args[1];
-    if (document.hasShape(id)) {
-      throw new EditorError(`id already exists: ${id}`);
-    }
-
-    const x1 = this.parseNumber(args[2], 'x1');
-    const y1 = this.parseNumber(args[3], 'y1');
-    const x2 = this.parseNumber(args[4], 'x2');
-    const y2 = this.parseNumber(args[5], 'y2');
-
-    const shape = this.shapeFactory.create('line', {
-      id,
-      numbers: [x1, y1, x2, y2],
-      stroke: args[6],
-    });
-    if (!target.add(shape)) {
-      throw new EditorError(`id already exists: ${id}`);
-    }
-
-    return shape;
-  }
-
-  private createText(
-    document: Document,
-    target: ShapeContainer,
-    args: string[],
-  ): Shape {
-    if (args.length !== 5) {
-      this.failUsage('create text <id> <x> <y> "content" [in <group>]');
-    }
-
-    const id = args[1];
-    if (document.hasShape(id)) {
-      throw new EditorError(`id already exists: ${id}`);
-    }
-
-    const x = this.parseNumber(args[2], 'x');
-    const y = this.parseNumber(args[3], 'y');
-    const content = args[4];
-
-    const shape = this.shapeFactory.create('text', {
-      id,
-      numbers: [x, y],
-      content,
-    });
-    if (!target.add(shape)) {
-      throw new EditorError(`id already exists: ${id}`);
-    }
-
-    return shape;
-  }
-
-  private createGroup(
-    document: Document,
-    target: ShapeContainer,
-    args: string[],
-  ): Shape {
-    if (args.length !== 2) {
-      this.failUsage('create g <id> [in <group>]');
-    }
-
-    const id = args[1];
-    if (document.hasShape(id)) {
-      throw new EditorError(`id already exists: ${id}`);
-    }
-
-    const shape = document.createGroup(id);
-    if (!target.add(shape)) {
-      throw new EditorError(`id already exists: ${id}`);
-    }
-
-    return shape;
-  }
-
   private tree(args: string[]): void {
     const document = this.requireDocument();
-
-    if (args.length > 0) {
-      this.failUsage('tree');
-    }
+    this.commandParser.parseTree(args);
 
     console.log(this.treeFormatter.format(document));
   }
 
   private save(args: string[]): void {
     const document = this.requireDocument();
-
-    if (args.length > 1) {
-      this.failUsage('save [file.svg]');
-    }
-
-    if (args.length === 0) {
-      throw new EditorError("no file path. use 'save <file.svg>'");
-    }
-
-    const filePath = args[0];
+    const filePath = this.commandParser.parseSave(args);
     const content = this.svgSerializer.serialize(document);
 
     try {
@@ -441,24 +185,6 @@ export class SvgEditorCli {
     }
 
     return this.document;
-  }
-
-  private parseNumber(token: string, fieldName: string): number {
-    const value = Number(token);
-
-    if (!Number.isFinite(value)) {
-      throw new EditorError(`invalid number for ${fieldName}: ${token}`);
-    }
-
-    return value;
-  }
-
-  private failUsage(usage: string): never {
-    throw new EditorError(`usage: ${usage}`);
-  }
-
-  private failUnknownShapeType(shapeType: string): never {
-    throw new EditorError(`unknown shape type: ${shapeType} (is the plugin loaded?)`);
   }
 
   private printHelp(): void {
