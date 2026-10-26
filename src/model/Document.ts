@@ -42,6 +42,10 @@ export class Document {
     }) as Group;
   }
 
+  public countShapes(): number {
+    return this.countInContainer(this.rootContainer);
+  }
+
   public addShape(shape: Shape): boolean {
     return this.rootContainer.add(shape);
   }
@@ -56,5 +60,20 @@ export class Document {
 
   public hasShape(id: string): boolean {
     return this.shapeRegistry.has(id);
+  }
+
+  private countInContainer(container: ShapeContainer): number {
+    let count = 0;
+
+    for (const child of container.children) {
+      count += 1;
+      const nested = child.asContainer();
+
+      if (nested !== null) {
+        count += this.countInContainer(nested);
+      }
+    }
+
+    return count;
   }
 }

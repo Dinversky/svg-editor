@@ -109,6 +109,7 @@ test('prints the exact banner, handles help, unknown commands, and exits', async
   );
   assert.match(result.stdout, /create text <id> <x> <y> "content"/);
   assert.match(result.stdout, /create g <id>/);
+  assert.match(result.stdout, /create <type> \.\.\. \[in <group>\]/);
   assert.match(result.stdout, /^error: unknown command: unknown$/m);
   assert.doesNotMatch(result.stdout, /error: error:/);
   assert.doesNotMatch(result.stdout, /svg> /);
@@ -630,6 +631,92 @@ test('rejects invalid groups and duplicate IDs without changing the document', a
   assert.equal(
     lines.filter((line) => line.startsWith('├──') || line.startsWith('└──')).length,
     2,
+  );
+});
+
+test('creates shapes in specified and nested groups with the in clause', async (t) => {
+  const tempDir = createTempDir(t);
+  const filePath = path.join(tempDir, 'nested.svg');
+
+  const result = await runCli(
+    'init 800 600\n' +
+    'create g outer\n' +
+    'create g inner in outer\n' +
+    'create rect r1 1 2 3 4 red in inner\n' +
+    'create text t1 5 6 "Hello" in inner\n' +
+    'create line l1 0 0 10 10 black in outer\n' +
+    'create circle c1 10 20 5 in outer\n' +
+    'create rect root1 0 0 5 5\n' +
+    `save ${filePath}\n` +
+    'exit\n',
+  );
+
+  assert.equal(result.code, 0);
+  assert.match(result.stdout, /g#outer created$/m);
+  assert.match(result.stdout, /g#inner created in g#outer$/m);
+  assert.match(result.stdout, /rect#r1 created in g#inner$/m);
+  assert.match(result.stdout, /text#t1 created in g#inner$/m);
+  assert.match(result.stdout, /line#l1 created in g#outer$/m);
+  assert.match(result.stdout, /circle#c1 created in g#outer$/m);
+  assert.match(result.stdout, /rect#root1 created$/m);
+  assert.ok(result.stdout.includes(`saved to ${filePath} (7 elements)`));
+
+  const expectedSvg = [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600">',
+    '  <g id="outer">',
+    '    <g id="inner">',
+    '      <rect id="r1" x="1" y="2" width="3" height="4" fill="red"/>',
+    '      <text id="t1" x="5" y="6">Hello</text>',
+    '    </g>',
+    '    <line id="l1" x1="0" y1="0" x2="10" y2="10" stroke="black"/>',
+    '    <circle id="c1" cx="10" cy="20" r="5"/>',
+    '  </g>',
+    '  <rect id="root1" x="0" y="0" width="5" height="5"/>',
+    '</svg>',
+    '',
+  ].join('\n');
+
+  assert.equal(readFileSync(filePath, 'utf8'), expectedSvg);
+});
+
+test('rejects missing or non-container in targets without mutation', async (t) => {
+  const tempDir = createTempDir(t);
+  const filePath = path.join(tempDir, 'invalid-targets.svg');
+
+  const result = await runCli(
+    'init\n' +
+    'create rect keep 0 0 10 10\n' +
+    'create g group1\n' +
+    'create rect bad1 1 2 3 4 in missing\n' +
+    'create rect bad2 1 2 3 4 in keep\n' +
+    'create rect ok 1 2 3 4 in group1\n' +
+    'create circle keep 1 2 3 in group1\n' +
+    `save ${filePath}\n` +
+    'exit\n',
+  );
+
+  assert.equal(result.code, 0);
+  assert.match(result.stdout, /error: no such container: missing/);
+  assert.match(result.stdout, /error: not a container: keep/);
+  assert.match(result.stdout, /error: id already exists: keep/);
+  assert.ok(result.stdout.includes(`saved to ${filePath} (3 elements)`));
+
+  const svg = readFileSync(filePath, 'utf8');
+  assert.doesNotMatch(svg, /bad1/);
+  assert.doesNotMatch(svg, /bad2/);
+  assert.equal(
+    svg,
+    [
+      '<?xml version="1.0" encoding="UTF-8"?>',
+      '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600">',
+      '  <rect id="keep" x="0" y="0" width="10" height="10"/>',
+      '  <g id="group1">',
+      '    <rect id="ok" x="1" y="2" width="3" height="4"/>',
+      '  </g>',
+      '</svg>',
+      '',
+    ].join('\n'),
   );
 });
 

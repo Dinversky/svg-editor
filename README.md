@@ -14,6 +14,8 @@ circles, ellipses, lines, and text. The implemented commands are:
 - `create line <id> <x1> <y1> <x2> <y2> [stroke]` — add a line.
 - `create text <id> <x> <y> "content"` — add a text element.
 - `create g <id>` — add an empty group.
+- All `create` commands accept an optional trailing `in <groupId>` to add
+  the new shape to an existing group; without it the shape is added to the root.
 - `tree` — display the canvas and its shapes in document order.
 - `save [file.svg]` — serialize the canvas to SVG and write it to a file.
 - `help` / `exit`.
@@ -21,12 +23,12 @@ circles, ellipses, lines, and text. The implemented commands are:
 Repeating `init` replaces the current document. Because `read` is not
 implemented yet, a newly initialized document has no source path; `save`
 without a filename therefore reports an error. Group containers exist in the
-model and empty groups can be created with `create g`, but commands for
-populating groups (`create ... in`), `group`/`ungroup`, and recursive tree
-output are not implemented. Other shape types, concrete editing commands,
-undo/redo, and the `box` plugin are not implemented. The `Command` interface
-and `CommandRegistry` foundation exist, but no concrete command classes or
-command history are implemented.
+model; empty groups can be created with `create g`, and `create ... in <group>`
+adds new shapes directly into a group. Commands for `group`/`ungroup` and
+recursive tree output are not implemented. Other shape types, concrete editing
+commands, undo/redo, and the `box` plugin are not implemented. The `Command`
+interface and `CommandRegistry` foundation exist, but no concrete command
+classes or command history are implemented.
 
 ## Requirements
 

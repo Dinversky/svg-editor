@@ -20,6 +20,10 @@ export abstract class Shape {
     return this.parentContainer;
   }
 
+  public asContainer(): ShapeContainer | null {
+    return null;
+  }
+
   /** @internal 仅供容器的受控添加流程调用。 */
   public attachTo(container: ShapeContainer): boolean {
     if (this.parentContainer !== null) {

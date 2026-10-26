@@ -1,6 +1,8 @@
 import { createInterface, type Interface } from 'node:readline';
 import { EditorError } from '../errors/EditorError.js';
 import { Document } from '../model/Document.js';
+import type { Shape } from '../model/Shape.js';
+import type { ShapeContainer } from '../model/ShapeContainer.js';
 import { ShapeFactory } from '../model/ShapeFactory.js';
 import { SvgFileWriter } from '../io/SvgFileWriter.js';
 import { SvgSerializer } from '../io/SvgSerializer.js';
@@ -120,7 +122,7 @@ export class SvgEditorCli {
     const document = this.requireDocument();
 
     if (args.length === 0) {
-      this.failUsage('create <type> <id> [params]');
+      this.failUsage('create <type> <id> [params] [in <group>]');
     }
 
     const shapeType = args[0];
@@ -128,42 +130,89 @@ export class SvgEditorCli {
       this.failUnknownShapeType(shapeType);
     }
 
+    const { shapeArgs, containerId } = this.splitContainerClause(args);
+    const target = this.resolveContainer(document, containerId);
+    const shape = this.buildShape(document, target, shapeType, shapeArgs);
+    const location = containerId === undefined ? '' : ` in g#${containerId}`;
+
+    console.log(`${shapeType}#${shape.id} created${location}`);
+  }
+
+  private buildShape(
+    document: Document,
+    target: ShapeContainer,
+    shapeType: string,
+    args: string[],
+  ): Shape {
     if (shapeType === 'rect') {
-      this.createRect(document, args);
-      return;
+      return this.createRect(document, target, args);
     }
 
     if (shapeType === 'circle') {
-      this.createCircle(document, args);
-      return;
+      return this.createCircle(document, target, args);
     }
 
     if (shapeType === 'ellipse') {
-      this.createEllipse(document, args);
-      return;
+      return this.createEllipse(document, target, args);
     }
 
     if (shapeType === 'line') {
-      this.createLine(document, args);
-      return;
+      return this.createLine(document, target, args);
     }
 
     if (shapeType === 'text') {
-      this.createText(document, args);
-      return;
+      return this.createText(document, target, args);
     }
 
     if (shapeType === 'g') {
-      this.createGroup(document, args);
-      return;
+      return this.createGroup(document, target, args);
     }
 
-    this.failUnknownShapeType(shapeType);
+    return this.failUnknownShapeType(shapeType);
   }
 
-  private createRect(document: Document, args: string[]): void {
+  private splitContainerClause(args: string[]): {
+    shapeArgs: string[];
+    containerId?: string;
+  } {
+    if (args.length >= 3 && args[args.length - 2] === 'in') {
+      return {
+        shapeArgs: args.slice(0, -2),
+        containerId: args[args.length - 1],
+      };
+    }
+
+    return { shapeArgs: args };
+  }
+
+  private resolveContainer(
+    document: Document,
+    containerId?: string,
+  ): ShapeContainer {
+    if (containerId === undefined) {
+      return document.root;
+    }
+
+    const shape = document.findShape(containerId);
+    if (shape === undefined) {
+      throw new EditorError(`no such container: ${containerId}`);
+    }
+
+    const container = shape.asContainer();
+    if (container === null) {
+      throw new EditorError(`not a container: ${containerId}`);
+    }
+
+    return container;
+  }
+
+  private createRect(
+    document: Document,
+    target: ShapeContainer,
+    args: string[],
+  ): Shape {
     if (args.length < 6 || args.length > 7) {
-      this.failUsage('create rect <id> <x> <y> <w> <h> [fill]');
+      this.failUsage('create rect <id> <x> <y> <w> <h> [fill] [in <group>]');
     }
 
     const id = args[1];
@@ -189,16 +238,20 @@ export class SvgEditorCli {
       numbers: [x, y, width, height],
       fill: args[6],
     });
-    if (!document.addShape(shape)) {
+    if (!target.add(shape)) {
       throw new EditorError(`id already exists: ${id}`);
     }
 
-    console.log(`rect#${id} created`);
+    return shape;
   }
 
-  private createCircle(document: Document, args: string[]): void {
+  private createCircle(
+    document: Document,
+    target: ShapeContainer,
+    args: string[],
+  ): Shape {
     if (args.length < 5 || args.length > 6) {
-      this.failUsage('create circle <id> <cx> <cy> <r> [fill]');
+      this.failUsage('create circle <id> <cx> <cy> <r> [fill] [in <group>]');
     }
 
     const id = args[1];
@@ -219,16 +272,20 @@ export class SvgEditorCli {
       numbers: [cx, cy, radius],
       fill: args[5],
     });
-    if (!document.addShape(shape)) {
+    if (!target.add(shape)) {
       throw new EditorError(`id already exists: ${id}`);
     }
 
-    console.log(`circle#${id} created`);
+    return shape;
   }
 
-  private createEllipse(document: Document, args: string[]): void {
+  private createEllipse(
+    document: Document,
+    target: ShapeContainer,
+    args: string[],
+  ): Shape {
     if (args.length < 6 || args.length > 7) {
-      this.failUsage('create ellipse <id> <cx> <cy> <rx> <ry> [fill]');
+      this.failUsage('create ellipse <id> <cx> <cy> <rx> <ry> [fill] [in <group>]');
     }
 
     const id = args[1];
@@ -254,16 +311,20 @@ export class SvgEditorCli {
       numbers: [cx, cy, rx, ry],
       fill: args[6],
     });
-    if (!document.addShape(shape)) {
+    if (!target.add(shape)) {
       throw new EditorError(`id already exists: ${id}`);
     }
 
-    console.log(`ellipse#${id} created`);
+    return shape;
   }
 
-  private createLine(document: Document, args: string[]): void {
+  private createLine(
+    document: Document,
+    target: ShapeContainer,
+    args: string[],
+  ): Shape {
     if (args.length < 6 || args.length > 7) {
-      this.failUsage('create line <id> <x1> <y1> <x2> <y2> [stroke]');
+      this.failUsage('create line <id> <x1> <y1> <x2> <y2> [stroke] [in <group>]');
     }
 
     const id = args[1];
@@ -281,16 +342,20 @@ export class SvgEditorCli {
       numbers: [x1, y1, x2, y2],
       stroke: args[6],
     });
-    if (!document.addShape(shape)) {
+    if (!target.add(shape)) {
       throw new EditorError(`id already exists: ${id}`);
     }
 
-    console.log(`line#${id} created`);
+    return shape;
   }
 
-  private createText(document: Document, args: string[]): void {
+  private createText(
+    document: Document,
+    target: ShapeContainer,
+    args: string[],
+  ): Shape {
     if (args.length !== 5) {
-      this.failUsage('create text <id> <x> <y> "content"');
+      this.failUsage('create text <id> <x> <y> "content" [in <group>]');
     }
 
     const id = args[1];
@@ -307,16 +372,20 @@ export class SvgEditorCli {
       numbers: [x, y],
       content,
     });
-    if (!document.addShape(shape)) {
+    if (!target.add(shape)) {
       throw new EditorError(`id already exists: ${id}`);
     }
 
-    console.log(`text#${id} created`);
+    return shape;
   }
 
-  private createGroup(document: Document, args: string[]): void {
+  private createGroup(
+    document: Document,
+    target: ShapeContainer,
+    args: string[],
+  ): Shape {
     if (args.length !== 2) {
-      this.failUsage('create g <id>');
+      this.failUsage('create g <id> [in <group>]');
     }
 
     const id = args[1];
@@ -325,11 +394,11 @@ export class SvgEditorCli {
     }
 
     const shape = document.createGroup(id);
-    if (!document.addShape(shape)) {
+    if (!target.add(shape)) {
       throw new EditorError(`id already exists: ${id}`);
     }
 
-    console.log(`g#${id} created`);
+    return shape;
   }
 
   private tree(args: string[]): void {
@@ -362,7 +431,7 @@ export class SvgEditorCli {
       throw new EditorError(`cannot write file: ${filePath}`);
     }
 
-    const count = document.root.children.length;
+    const count = document.countShapes();
     console.log(`saved to ${filePath} (${count} element${count === 1 ? '' : 's'})`);
   }
 
@@ -401,6 +470,7 @@ export class SvgEditorCli {
     console.log('  create line <id> <x1> <y1> <x2> <y2> [stroke] Create a line.');
     console.log('  create text <id> <x> <y> "content"             Create a text element.');
     console.log('  create g <id>                                  Create an empty group.');
+    console.log('  create <type> ... [in <group>]                 Add a shape to the root or an existing group.');
     console.log('  tree                                          Show the document tree.');
     console.log('  save [file.svg]                               Save the current document.');
     console.log('  help                                          Show this help message.');

@@ -15,6 +15,10 @@ export class Group extends Shape implements ShapeContainer {
     return this.childList.children;
   }
 
+  public override asContainer(): ShapeContainer {
+    return this;
+  }
+
   public add(shape: Shape): boolean {
     return this.childList.add(shape);
   }
