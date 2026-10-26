@@ -182,6 +182,14 @@ export class CommandParser {
     return args[0];
   }
 
+  public parseShow(args: string[]): string {
+    if (args.length !== 1) {
+      this.failUsage('show <id>');
+    }
+
+    return args[0];
+  }
+
   public parseSave(args: string[]): string {
     if (args.length > 1) {
       this.failUsage('save [file.svg]');

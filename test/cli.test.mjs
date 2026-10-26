@@ -112,6 +112,7 @@ test('prints the exact banner, handles help, unknown commands, and exits', async
   assert.match(result.stdout, /create g <id>/);
   assert.match(result.stdout, /create <type> \.\.\. \[in <group>\]/);
   assert.match(result.stdout, /tree \[id\]/);
+  assert.match(result.stdout, /show <id>/);
   assert.match(result.stdout, /^error: unknown command: unknown$/m);
   assert.doesNotMatch(result.stdout, /error: error:/);
   assert.doesNotMatch(result.stdout, /svg> /);
@@ -712,6 +713,65 @@ test('tree id shows a group subtree or a leaf and reports invalid requests', asy
   assert.match(result.stdout, /error: usage: tree \[id\]/);
 });
 
+test('show displays shape details with parent and attributes', async () => {
+  const result = await runCli(
+    'init 800 600\n' +
+    'create g markers\n' +
+    'create circle c1 100 100 20 red in markers\n' +
+    'create rect bg 0 0 800 600 #ffffff\n' +
+    'create text t1 5 6 "Hello World" in markers\n' +
+    'show c1\n' +
+    'show bg\n' +
+    'show t1\n' +
+    'show markers\n' +
+    'exit\n',
+  );
+
+  assert.equal(result.code, 0);
+  const lines = withoutPrompt(result.stdout).split('\n');
+
+  const circleIndex = lines.indexOf('circle#c1  parent=g#markers');
+  assert.notEqual(circleIndex, -1);
+  assert.equal(lines[circleIndex + 1], '  cx=100 cy=100 r=20');
+  assert.equal(lines[circleIndex + 2], '  fill=red');
+
+  const rectIndex = lines.indexOf('rect#bg  parent=svg');
+  assert.notEqual(rectIndex, -1);
+  assert.equal(lines[rectIndex + 1], '  x=0 y=0 w=800 h=600');
+  assert.equal(lines[rectIndex + 2], '  fill=#ffffff');
+
+  const textIndex = lines.indexOf('text#t1  parent=g#markers');
+  assert.notEqual(textIndex, -1);
+  assert.equal(lines[textIndex + 1], '  (5,6) "Hello World"');
+
+  const groupIndex = lines.indexOf('g#markers  parent=svg');
+  assert.notEqual(groupIndex, -1);
+  assert.equal(lines[groupIndex + 1], 'Goodbye.');
+});
+
+test('show reports missing documents, ids, and invalid arguments', async () => {
+  const result = await runCli(
+    'show c1\n' +
+    'init\n' +
+    'show missing\n' +
+    'show\n' +
+    'show a b\n' +
+    'exit\n',
+  );
+
+  assert.equal(result.code, 0);
+  assert.equal(
+    (result.stdout.match(/error: no document\. use 'init' or 'read' first/g) ?? []).length,
+    1,
+  );
+  assert.match(result.stdout, /error: no such shape: missing/);
+  assert.equal(
+    (result.stdout.match(/error: usage: show <id>/g) ?? []).length,
+    2,
+  );
+  assert.doesNotMatch(result.stdout, /error: error:/);
+});
+
 test('creates shapes in specified and nested groups with the in clause', async (t) => {
   const tempDir = createTempDir(t);
   const filePath = path.join(tempDir, 'nested.svg');
@@ -947,6 +1007,16 @@ test('CommandParser parses init, tree, and save arguments', () => {
   assert.throws(
     () => parser.parseSave(['a.svg', 'b.svg']),
     { message: 'usage: save [file.svg]' },
+  );
+
+  assert.equal(parser.parseShow(['c1']), 'c1');
+  assert.throws(
+    () => parser.parseShow([]),
+    { message: 'usage: show <id>' },
+  );
+  assert.throws(
+    () => parser.parseShow(['a', 'b']),
+    { message: 'usage: show <id>' },
   );
 });
 

@@ -18,6 +18,10 @@ export class RootContainer implements ShapeContainer {
     return null;
   }
 
+  public describe(): string {
+    return 'svg';
+  }
+
   public add(shape: Shape): boolean {
     return this.childList.add(shape);
   }

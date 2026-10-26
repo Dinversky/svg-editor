@@ -7,6 +7,7 @@ import { ShapeFactory } from '../model/ShapeFactory.js';
 import { SvgFileWriter } from '../io/SvgFileWriter.js';
 import { SvgSerializer } from '../io/SvgSerializer.js';
 import { CommandParser, type ParsedCreate } from './CommandParser.js';
+import { ShowFormatter } from './ShowFormatter.js';
 import { Tokenizer } from './Tokenizer.js';
 import { TreeFormatter } from './TreeFormatter.js';
 
@@ -16,6 +17,7 @@ export class SvgEditorCli {
   private readonly tokenizer = new Tokenizer();
   private readonly commandParser = new CommandParser();
   private readonly treeFormatter = new TreeFormatter();
+  private readonly showFormatter = new ShowFormatter();
   private readonly shapeFactory = new ShapeFactory();
   private readonly svgSerializer = new SvgSerializer();
   private readonly svgFileWriter = new SvgFileWriter();
@@ -91,6 +93,9 @@ export class SvgEditorCli {
         return;
       case 'tree':
         this.tree(args);
+        return;
+      case 'show':
+        this.show(args);
         return;
       case 'save':
         this.save(args);
@@ -174,6 +179,18 @@ export class SvgEditorCli {
     console.log(this.treeFormatter.formatSubtree(shape));
   }
 
+  private show(args: string[]): void {
+    const document = this.requireDocument();
+    const id = this.commandParser.parseShow(args);
+    const shape = document.findShape(id);
+
+    if (shape === undefined) {
+      throw new EditorError(`no such shape: ${id}`);
+    }
+
+    console.log(this.showFormatter.format(shape));
+  }
+
   private save(args: string[]): void {
     const document = this.requireDocument();
     const filePath = this.commandParser.parseSave(args);
@@ -208,6 +225,7 @@ export class SvgEditorCli {
     console.log('  create g <id>                                  Create an empty group.');
     console.log('  create <type> ... [in <group>]                 Add a shape to the root or an existing group.');
     console.log('  tree [id]                                     Show the document tree or a node subtree.');
+    console.log('  show <id>                                     Show a shape or group in detail.');
     console.log('  save [file.svg]                               Save the current document.');
     console.log('  help                                          Show this help message.');
     console.log('  exit                                          Exit the editor.');

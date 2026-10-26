@@ -21,6 +21,7 @@ circles, ellipses, lines, and text. The implemented commands are:
   are rejected with a single-line error.
 - `tree [id]` — display the full canvas tree, or only the subtree rooted at
   the given shape/group ID.
+- `show <id>` — display the parent and attributes of a shape or group.
 - `save [file.svg]` — serialize the canvas to SVG and write it to a file.
 - `help` / `exit`.
 
@@ -28,11 +29,12 @@ Repeating `init` replaces the current document. Because `read` is not
 implemented yet, a newly initialized document has no source path; `save`
 without a filename therefore reports an error. Group containers exist in the
 model; empty groups can be created with `create g`, and `create ... in <group>`
-adds new shapes directly into a group. Commands for `group`/`ungroup` and
-recursive tree output are not implemented. Other shape types, concrete editing
-commands, undo/redo, and the `box` plugin are not implemented. The `Command`
-interface and `CommandRegistry` foundation exist, but no concrete command
-classes or command history are implemented.
+adds new shapes directly into a group. Commands for `group`/`ungroup` are not
+implemented; `tree` recursively displays groups and `show` reports per-node
+details. Other shape types, concrete editing commands, undo/redo, and the
+`box` plugin are not implemented. The `Command` interface and
+`CommandRegistry` foundation exist, but no concrete command classes or command
+history are implemented.
 
 ## Requirements
 
