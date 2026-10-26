@@ -772,6 +772,108 @@ test('show reports missing documents, ids, and invalid arguments', async () => {
   assert.doesNotMatch(result.stdout, /error: error:/);
 });
 
+test('replays a representative stage 3 transcript end to end', async (t) => {
+  const tempDir = createTempDir(t);
+  const filePath = path.join(tempDir, 'stage3.svg');
+
+  const result = await runCli(
+    'init 800 600\n' +
+    'create rect bg 0 0 800 600 #ffffff\n' +
+    'create text title 20 40 "Diagram & <test>"\n' +
+    'create g markers\n' +
+    'create circle c1 100 100 20 red in markers\n' +
+    'create ellipse e1 220 100 40 20 #4a90d9 in markers\n' +
+    'create line l1 20 180 780 180 black in markers\n' +
+    'create g inner in markers\n' +
+    'create rect box 300 220 60 60 #3366ff in inner\n' +
+    'create text label 310 240 "Box & <label>" in inner\n' +
+    'create rect bad 0 0 10 10 in missing\n' +
+    'create circle c1 10 10 5\n' +
+    'create rect badcolor 0 0 10 10 notacolor\n' +
+    'tree\n' +
+    'tree markers\n' +
+    'show c1\n' +
+    'show markers\n' +
+    'show box\n' +
+    `save ${filePath}\n` +
+    'exit\n',
+  );
+
+  assert.equal(result.code, 0);
+  assert.match(result.stdout, /error: no such container: missing/);
+  assert.match(result.stdout, /error: id already exists: c1/);
+  assert.match(result.stdout, /error: invalid color for fill: notacolor/);
+  assert.ok(result.stdout.includes(`saved to ${filePath} (9 elements)`));
+
+  const lines = withoutPrompt(result.stdout).split('\n');
+  const treeIndex = lines.indexOf('svg (800x600)');
+  assert.notEqual(treeIndex, -1);
+  assert.deepEqual(lines.slice(treeIndex, treeIndex + 10), [
+    'svg (800x600)',
+    '├── rect#bg x=0 y=0 w=800 h=600 fill=#ffffff',
+    '├── text#title (20,40) "Diagram & <test>"',
+    '└── g#markers',
+    '    ├── circle#c1 cx=100 cy=100 r=20 fill=red',
+    '    ├── ellipse#e1 cx=220 cy=100 rx=40 ry=20 fill=#4a90d9',
+    '    ├── line#l1 (20,180) -> (780,180)',
+    '    └── g#inner',
+    '        ├── rect#box x=300 y=220 w=60 h=60 fill=#3366ff',
+    '        └── text#label (310,240) "Box & <label>"',
+  ]);
+
+  const subtreeIndex = lines.indexOf('g#markers');
+  assert.notEqual(subtreeIndex, -1);
+  assert.deepEqual(lines.slice(subtreeIndex, subtreeIndex + 7), [
+    'g#markers',
+    '├── circle#c1 cx=100 cy=100 r=20 fill=red',
+    '├── ellipse#e1 cx=220 cy=100 rx=40 ry=20 fill=#4a90d9',
+    '├── line#l1 (20,180) -> (780,180)',
+    '└── g#inner',
+    '    ├── rect#box x=300 y=220 w=60 h=60 fill=#3366ff',
+    '    └── text#label (310,240) "Box & <label>"',
+  ]);
+
+  const circleIndex = lines.indexOf('circle#c1  parent=g#markers');
+  assert.notEqual(circleIndex, -1);
+  assert.deepEqual(lines.slice(circleIndex, circleIndex + 3), [
+    'circle#c1  parent=g#markers',
+    '  cx=100 cy=100 r=20',
+    '  fill=red',
+  ]);
+
+  assert.ok(lines.includes('g#markers  parent=svg'));
+
+  const boxIndex = lines.indexOf('rect#box  parent=g#inner');
+  assert.notEqual(boxIndex, -1);
+  assert.deepEqual(lines.slice(boxIndex, boxIndex + 3), [
+    'rect#box  parent=g#inner',
+    '  x=300 y=220 w=60 h=60',
+    '  fill=#3366ff',
+  ]);
+
+  const expectedSvg = [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600">',
+    '  <rect id="bg" x="0" y="0" width="800" height="600" fill="#ffffff"/>',
+    '  <text id="title" x="20" y="40">Diagram &amp; &lt;test&gt;</text>',
+    '  <g id="markers">',
+    '    <circle id="c1" cx="100" cy="100" r="20" fill="red"/>',
+    '    <ellipse id="e1" cx="220" cy="100" rx="40" ry="20" fill="#4a90d9"/>',
+    '    <line id="l1" x1="20" y1="180" x2="780" y2="180" stroke="black"/>',
+    '    <g id="inner">',
+    '      <rect id="box" x="300" y="220" width="60" height="60" fill="#3366ff"/>',
+    '      <text id="label" x="310" y="240">Box &amp; &lt;label&gt;</text>',
+    '    </g>',
+    '  </g>',
+    '</svg>',
+    '',
+  ].join('\n');
+
+  assert.equal(readFileSync(filePath, 'utf8'), expectedSvg);
+  assert.equal((expectedSvg.match(/id="c1"/g) ?? []).length, 1);
+  assert.doesNotMatch(expectedSvg, /id="bad"|id="badcolor"/);
+});
+
 test('creates shapes in specified and nested groups with the in clause', async (t) => {
   const tempDir = createTempDir(t);
   const filePath = path.join(tempDir, 'nested.svg');

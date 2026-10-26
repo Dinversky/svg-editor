@@ -396,6 +396,13 @@ CommandRegistry ..> Command : creates via CommandFactory
 - Task 3-I 已知限制：`show` 对 Group 只输出 `g#id  parent=...` 头部，不列出子节点或子节点数量（作业未规定）；根级父标签 `svg` 为本任务决策；`show` 不读取文件，也不扩展成交互界面。
 - README 决策：新增用户可见命令 `show <id>`，根 README 更新命令列表与当前范围；构建流程和其他命令不变。
 - `项目规划.md` 同步：更新当前基线（3-H 已提交为 `e933e17`、3-I 本地未提交、84/84），标记 3-I 完成并把下一项标为 3-J。
+- Task 3-J 开始前检查：分支 `main`，HEAD `4436c83`（`feat(cli): 实现 show 命令，显示形状或组的详细属性`，Task 3-I 已提交），`origin/main` 为 `5f7d600`，本地领先 3 个提交；工作区干净；84 个测试作为回归基线。Node.js v22.22.2，npm 10.9.7。
+- Task 3-J 集成验收设计：新增 1 个阶段 3 transcript 测试，按顺序执行全部图形创建、Group/嵌套 Group、`create ... in`、tree 全树/子树、show 属性明细、无效容器/重复 ID/非法颜色失败、save；断言命令输出、完整/子树 tree 行、show 行、9 elements 计数和最终 SVG 的嵌套顺序、属性、XML 转义及失败图形不存在。
+- Task 3-J 浏览器渲染验收：生成代表性 SVG，启动仅绑定 `127.0.0.1` 的临时 HTTP 服务，用浏览器实际打开；确认白底矩形、红圆、蓝椭圆、黑线、`Diagram & <test>`、嵌套 `Box & <label>` 全部正常渲染，SVG 相关控制台/网络无错误。验收后已停止临时服务并删除临时文件。
+- Task 3-J 验证：`npm run typecheck` 通过；`npm test` 85/85 通过（CLI 文件 65 + CommandRegistry 8 + Tokenizer 12）；`git diff --check` 无空白错误（仅 LF/CRLF 提示）。文档一致性抽查范围：`AGENTS.md`、`doc/AGENTS.md`、`项目规划.md`、`doc/README.md`、根 README 与当前代码/测试状态；已记录阶段 3 完成范围、已知限制和阶段 4 待办，未发现需要静默修正的冲突。
+- Task 3-J 结论：3-A 至 3-I 验收项与阶段 3 集成回归均通过，阶段 3 完成。`group`/`ungroup`/`addto` 等属于阶段 4，不计入阶段 3 缺陷。
+- README 决策：本任务只新增集成测试和验收记录，未改变 CLI 行为、构建流程、目录职责或阶段范围，根 README 无需更新。
+- `项目规划.md` 同步：更新当前基线（3-I 已提交为 `4436c83`、3-J 本地未提交、85/85），标记阶段 3 完成并把下一项标为阶段 4。
 
 - 测试清理（2026-10-26）：删除 `test/cli.test.mjs` 中 15 个重复或低价值用例（各图形 getter/describe、重复的失败状态/重复 ID、重复的 rect 端到端测试和 `keeps unquoted command parsing unchanged`），CLI 测试由 57 降至 42，完整测试由 77/77 降至 62/62；文件由 1274 行降至 1057 行。保留各图形的拒绝路径、SVG 转义、CLI 集成、Document 不变量、Tokenizer 错误和 EOF/管道测试。未修改 Text 实现。
 
@@ -422,8 +429,8 @@ CommandRegistry ..> Command : creates via CommandFactory
 
 - 环境：Node.js v22.22.2，npm 10.9.7。
 - `npm run typecheck`：通过，无类型错误。
-- 针对性测试：`npm run build` 后运行 `node --test test/cli.test.mjs`，64 个 CLI/模型测试全部通过（其中进程级 CLI 测试 53 个，CommandParser 单元 2 个，工厂/Group 模型测试 9 个）。
-- `npm test`：先构建，再运行 `node --test test/cli.test.mjs test/tokenizer.test.mjs test/command-registry.test.mjs`；84 个测试通过，0 失败（CLI 文件 64 + CommandRegistry 8 + Tokenizer 12）。
+- 针对性测试：`npm run build` 后运行 `node --test test/cli.test.mjs`，65 个 CLI/模型测试全部通过（其中进程级 CLI 测试 54 个，CommandParser 单元 2 个，工厂/Group 模型测试 9 个）。
+- `npm test`：先构建，再运行 `node --test test/cli.test.mjs test/tokenizer.test.mjs test/command-registry.test.mjs`；85 个测试通过，0 失败（CLI 文件 65 + CommandRegistry 8 + Tokenizer 12）。
 - 不变量检查：测试覆盖根容器顺序、大小写敏感 ID、重复 ID、重复/跨容器挂载、添加/移除失败不改状态、移除后清除父节点、ID 复用，以及 ID 索引与容器内容一致。
 - 引用检查：`src/` 中无 `Canvas`、`RectangleShape` 或 `createRectangle` 残留；`TreeFormatter`/`ShowFormatter`/`SvgSerializer` 只调用 `describe()`/`toSvgElement()`/`asContainer()`，未读取图形专属属性。
 - Circle 检查：构造器拒绝空 ID、非有限圆心和非正/非有限半径；测试覆盖 `cx`/`cy`/`r` 的正常访问、可选 fill、describe/SVG 属性顺序与转义；CLI 测试覆盖重复 ID、非法参数、缺少/多余参数，并断言失败后 tree 只保留原有图形。
@@ -436,14 +443,15 @@ CommandRegistry ..> Command : creates via CommandFactory
 - 颜色检查：CLI 测试覆盖命名色（`red`、`navy`、`darkseagreen`）、大小写不敏感（`Red`）、6 位与 3 位 hex（`#4a90d9`、`#ABC`、`#fff`）的接受，以及 `notacolor`、`#ff`、`#gggggg`、`12red` 等非法 fill/stroke 的拒绝和失败不改文档；CommandParser 单元测试覆盖结构化解析结果（numbers/fill/stroke/content/containerId）、未知类型、usage、正数校验和 init/tree/save 参数。
 - tree 检查：CLI 测试覆盖空文档 `(empty)`（既有）、普通图形平铺（既有）、单 Group 多子节点、多层嵌套的缩进与 `│` 延续、`tree <group>` 子树、`tree <shape>` 单节点、`tree <missing>` 的 `no such shape` 和多余参数的 `usage: tree [id]`；CommandParser 单元覆盖 `parseTree` 的 0/1/2 参数。`save` 嵌套元素计数回归沿用既有 `(7 elements)` 断言。
 - show 检查：CLI 测试覆盖嵌套 Group 内 circle 的 `parent=g#markers` 与几何/fill 分行、根级 rect 的 `parent=svg` 与 hex fill、含空格 text 的内容行、Group 头部行、无文档、缺失 ID 的 `no such shape`、无参数/多余参数的 `usage: show <id>`；CommandParser 单元覆盖 `parseShow` 的 1/0/2 参数。
+- 阶段 3 集成检查：1 个 transcript 测试端到端覆盖全部图形、Group/嵌套、`in`、完整/子树 tree、show、颜色/容器/重复 ID 失败不改状态、XML 转义、全局 ID 唯一性、嵌套顺序和 9 elements 计数；生成 SVG 后通过临时 localhost HTTP 服务在浏览器实际渲染，所有预期图形和文本可见，无 SVG 相关控制台/网络错误。
 - 解析分层检查：`SvgEditorCli` 中已无 `parseNumber`、参数分支或按类型的构造分支；`src/cli/` 的参数解析集中在 `CommandParser`，词法切分仍只在 `Tokenizer`。
 - 词法检查：`Tokenizer` 独立存在于 `src/cli/Tokenizer.ts`；`src/cli/` 中没有 `command.split(/\s+/)`；CLI 通过 token 数组分派，引号异常由 `handleLine` 统一输出且不退出。
 - 错误处理检查：CLI 命令方法中不再有 `console.log('error: ...')`；`error:` 前缀只由 `handleLine` 添加；测试覆盖未知命令、参数错误、无文档、写文件失败和 Tokenizer 错误，均只出现一次前缀。
 - 注册表检查：`CommandRegistry` 只以类型方式依赖 `Command`；测试覆盖注册、查询、创建、工厂调用、重复注册、空名称、未知命令、工厂异常和多名称独立；未执行命令，未创建具体命令，CLI 未导入注册表。
-- CLI 回归：53 个进程级 CLI 测试全部通过，覆盖 rect/circle/ellipse/line/text/g 创建、`in` 归属、颜色接受与拒绝、完整/子树 tree 输出、show 属性明细、SVG 保存、banner 精确文本、管道无提示符、EOF 正常退出和失败不改文档；工厂与 Group 模型/序列化测试也全部通过。
+- CLI 回归：54 个进程级 CLI 测试全部通过，覆盖 rect/circle/ellipse/line/text/g 创建、`in` 归属、颜色接受与拒绝、完整/子树 tree 输出、show 属性明细、阶段 3 集成 transcript、SVG 保存、banner 精确文本、管道无提示符、EOF 正常退出和失败不改文档；工厂与 Group 模型/序列化测试也全部通过。
 - 交互提示符限制：当前自动化测试通过管道运行 CLI，只验证了管道输出不含 `svg> `；TTY 交互提示符由 `process.stdin.isTTY === true` 分支保留，未在自动化测试中验证。
-- 浏览器验收步骤仍见根 README；Task 3-I 未手工在浏览器中打开生成的 SVG。
-- Git 检查：本轮开始时 `main` 为 `e933e17`、`origin/main` 为 `5f7d600`（本地领先 2 个提交），工作区干净；完成后 `git diff --check` 无空白错误（仅有 LF/CRLF 提示），工作区为 8 个已跟踪文件修改、未跟踪 `src/cli/ShowFormatter.ts`；未创建 commit、push 或 tag。
+- 浏览器验收：Task 3-J 实际通过本地 HTTP 服务在浏览器打开代表性 SVG，确认全部图形/文本渲染正常；未做多浏览器兼容性测试。
+- Git 检查：本轮开始时 `main` 为 `4436c83`、`origin/main` 为 `5f7d600`（本地领先 3 个提交），工作区干净；完成后的实际状态为 `main...origin/main [ahead 3]`，未提交修改为 `doc/README.md`、`test/cli.test.mjs`、`项目规划.md`（`git diff --stat` 为 3 个文件、+123/−12）；`git diff --check` 未报告空白错误，仅提示 LF/CRLF 换行符警告；未创建 commit、push 或 tag，改动保留等待审查。
 
 ## 未完成事项
 
@@ -456,7 +464,7 @@ CommandRegistry ..> Command : creates via CommandFactory
 - `save` 无文件名且无来源路径时明确报错；`read` 实现后再接入“保存到读入路径”。
 - 按本阶段规范，不支持行内注释、单引号引用和反斜杠转义；只有行首 `#` 作为整行注释。
 - Stage 2-E 已完成 `EditorError`、统一错误边界、固定单行 banner、TTY/管道提示符区分和 EOF/管道行为测试；交互式 TTY 提示符未纳入自动化测试。
-- Stage 3-A 已完成 Circle，Stage 3-B 已完成 Ellipse，Stage 3-C 已完成 Line，Stage 3-D 已完成 Text，Stage 3-E 已完成 Group 容器与嵌套 SVG 序列化，Stage 3-F 已完成注册表式工厂与 `create g`，Stage 3-G 已完成 `create ... in`，Stage 3-H 已完成递归 tree 与 `tree [id]`，Stage 3-I 已完成 `show <id>`；Stage 3 其余任务（Group 收编/拆分命令与集成验收）尚未完成。
+- Stage 3-A 已完成 Circle，Stage 3-B 已完成 Ellipse，Stage 3-C 已完成 Line，Stage 3-D 已完成 Text，Stage 3-E 已完成 Group 容器与嵌套 SVG 序列化，Stage 3-F 已完成注册表式工厂与 `create g`，Stage 3-G 已完成 `create ... in`，Stage 3-H 已完成递归 tree 与 `tree [id]`，Stage 3-I 已完成 `show <id>`，Stage 3-J 已完成阶段 3 集成验收（transcript、浏览器渲染、文档一致性）；阶段 3 完成。阶段 4 的 `group`/`ungroup`/`addto` 等编辑命令和 undo/redo 尚未实现。
 - Tokenizer 不支持在双引号参数内转义双引号，CLI 无法直接输入包含双引号的 text 内容；模型层已正确处理并测试该情况，后续若需 CLI 支持需单独立项。
 - Text 的 tree 描述按作业格式用双引号包裹原始内容；内容自身含双引号时输出存在视觉歧义，未自行定义额外转义规则。
 - 阶段 2 的 A–E 已完成；具体编辑命令和 undo/redo 仍属于后续阶段。Command 接口/注册表基础已在 Task 6 完成，Stage 2-E 统一错误与 REPL 行为已在 Task 7 完成，Tokenizer 与双引号参数已在 Task 5 完成，Document、根容器和父节点基础已在 Task 4 完成。
