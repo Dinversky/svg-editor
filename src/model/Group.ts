@@ -1,0 +1,55 @@
+import { ChildShapeList } from './ChildShapeList.js';
+import { Shape } from './Shape.js';
+import type { ShapeContainer } from './ShapeContainer.js';
+import type { ShapeRegistry } from './ShapeRegistry.js';
+
+export class Group extends Shape implements ShapeContainer {
+  private readonly childList: ChildShapeList;
+
+  public constructor(id: string, registry: ShapeRegistry) {
+    super(id);
+    this.childList = new ChildShapeList(this, registry);
+  }
+
+  public get children(): readonly Shape[] {
+    return this.childList.children;
+  }
+
+  public add(shape: Shape): boolean {
+    return this.childList.add(shape);
+  }
+
+  public remove(shape: Shape): boolean {
+    return this.childList.remove(shape);
+  }
+
+  public hasChild(shape: Shape): boolean {
+    return this.childList.has(shape);
+  }
+
+  public describe(): string {
+    return `g#${this.id}`;
+  }
+
+  public toSvgElement(): string {
+    const id = this.escapeAttribute(this.id);
+
+    if (this.childList.children.length === 0) {
+      return `<g id="${id}"/>`;
+    }
+
+    const children = this.childList.children
+      .map((child) => this.indentLines(child.toSvgElement(), 2))
+      .join('\n');
+
+    return `<g id="${id}">\n${children}\n</g>`;
+  }
+
+  private indentLines(value: string, spaces: number): string {
+    const prefix = ' '.repeat(spaces);
+    return value
+      .split('\n')
+      .map((line) => `${prefix}${line}`)
+      .join('\n');
+  }
+}

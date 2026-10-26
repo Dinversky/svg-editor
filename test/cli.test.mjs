@@ -14,6 +14,7 @@ const { Ellipse } = require('../dist/model/Ellipse.js');
 const { Line } = require('../dist/model/Line.js');
 const { Rect } = require('../dist/model/Rect.js');
 const { Text } = require('../dist/model/Text.js');
+const { SvgSerializer } = require('../dist/io/SvgSerializer.js');
 
 const cliPath = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -977,6 +978,154 @@ test('removing a shape preserves the order and index of the remaining shapes', (
   assert.equal(first.parent, document.root);
   assert.equal(second.parent, null);
   assert.equal(third.parent, document.root);
+});
+
+test('Group adds children in order, sets parents, and shares the registry', () => {
+  const document = new Document(100, 100);
+  const group = document.createGroup('g1');
+
+  assert.equal(group.id, 'g1');
+  assert.equal(group.parent, null);
+  assert.equal(group.children.length, 0);
+  assert.equal(document.addShape(group), true);
+  assert.equal(group.parent, document.root);
+
+  const rect = new Rect('r1', 0, 0, 10, 10);
+  const circle = new Circle('c1', 5, 5, 2);
+
+  assert.equal(group.add(rect), true);
+  assert.equal(group.add(circle), true);
+  assert.equal(group.children.length, 2);
+  assert.equal(group.children[0], rect);
+  assert.equal(group.children[1], circle);
+  assert.equal(rect.parent, group);
+  assert.equal(circle.parent, group);
+  assert.equal(group.hasChild(rect), true);
+  assert.equal(document.findShape('r1'), rect);
+  assert.equal(document.findShape('c1'), circle);
+});
+
+test('Group rejects duplicate IDs without changing children or registry', () => {
+  const document = new Document(100, 100);
+  const group = document.createGroup('g1');
+  const rootRect = new Rect('r1', 0, 0, 10, 10);
+  const child = new Circle('c1', 5, 5, 2);
+
+  assert.equal(document.addShape(group), true);
+  assert.equal(document.addShape(rootRect), true);
+  assert.equal(group.add(child), true);
+
+  const duplicate = new Rect('r1', 20, 20, 10, 10);
+  assert.equal(group.add(duplicate), false);
+  assert.equal(group.children.length, 1);
+  assert.equal(group.children[0], child);
+  assert.equal(duplicate.parent, null);
+  assert.equal(document.findShape('r1'), rootRect);
+
+  const duplicateGroup = document.createGroup('g1');
+  assert.equal(document.addShape(duplicateGroup), false);
+  assert.equal(duplicateGroup.parent, null);
+  assert.equal(document.root.children.length, 2);
+  assert.equal(document.root.children[0], group);
+  assert.equal(document.root.children[1], rootRect);
+});
+
+test('nested groups preserve parent chains, ordering, and global IDs', () => {
+  const document = new Document(100, 100);
+  const outer = document.createGroup('outer');
+  const inner = document.createGroup('inner');
+  const deep = document.createGroup('deep');
+  const rect = new Rect('r1', 0, 0, 10, 10);
+
+  assert.equal(document.addShape(outer), true);
+  assert.equal(outer.add(inner), true);
+  assert.equal(inner.add(deep), true);
+  assert.equal(deep.add(rect), true);
+
+  assert.equal(document.root.children[0], outer);
+  assert.equal(outer.children[0], inner);
+  assert.equal(inner.children[0], deep);
+  assert.equal(deep.children[0], rect);
+  assert.equal(rect.parent, deep);
+  assert.equal(deep.parent, inner);
+  assert.equal(inner.parent, outer);
+  assert.equal(outer.parent, document.root);
+  assert.equal(document.findShape('outer'), outer);
+  assert.equal(document.findShape('inner'), inner);
+  assert.equal(document.findShape('deep'), deep);
+  assert.equal(document.findShape('r1'), rect);
+});
+
+test('Group rejects self-containment and ancestor cycles without mutation', () => {
+  const document = new Document(100, 100);
+  const outer = document.createGroup('outer');
+  const inner = document.createGroup('inner');
+
+  assert.equal(outer.add(inner), true);
+  assert.equal(inner.add(outer), false);
+  assert.equal(outer.parent, null);
+  assert.equal(inner.parent, outer);
+  assert.equal(outer.children.length, 1);
+  assert.equal(outer.children[0], inner);
+  assert.equal(inner.children.length, 0);
+  assert.equal(document.findShape('inner'), inner);
+  assert.equal(document.findShape('outer'), undefined);
+
+  const solo = document.createGroup('solo');
+  assert.equal(solo.add(solo), false);
+  assert.equal(solo.children.length, 0);
+  assert.equal(solo.parent, null);
+});
+
+test('Group removes children, clears parents, and preserves order', () => {
+  const document = new Document(100, 100);
+  const group = document.createGroup('g1');
+  const first = new Rect('a', 0, 0, 1, 1);
+  const second = new Circle('b', 1, 1, 1);
+  const third = new Ellipse('c', 2, 2, 1, 1);
+
+  assert.equal(document.addShape(group), true);
+  assert.equal(group.add(first), true);
+  assert.equal(group.add(second), true);
+  assert.equal(group.add(third), true);
+  assert.equal(group.remove(second), true);
+
+  assert.equal(group.children.length, 2);
+  assert.equal(group.children[0], first);
+  assert.equal(group.children[1], third);
+  assert.equal(second.parent, null);
+  assert.equal(document.findShape('b'), undefined);
+  assert.equal(group.remove(second), false);
+  assert.equal(group.children.length, 2);
+});
+
+test('SvgSerializer serializes nested and empty groups in order', () => {
+  const document = new Document(200, 100);
+  const outer = document.createGroup('outer');
+  const inner = document.createGroup('inner');
+  const empty = document.createGroup('empty');
+
+  assert.equal(document.addShape(outer), true);
+  assert.equal(outer.add(inner), true);
+  assert.equal(inner.add(new Rect('r1', 1, 2, 3, 4)), true);
+  assert.equal(document.addShape(new Circle('c1', 10, 20, 5, 'red')), true);
+  assert.equal(document.addShape(empty), true);
+
+  const expected = [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100" viewBox="0 0 200 100">',
+    '  <g id="outer">',
+    '    <g id="inner">',
+    '      <rect id="r1" x="1" y="2" width="3" height="4"/>',
+    '    </g>',
+    '  </g>',
+    '  <circle id="c1" cx="10" cy="20" r="5" fill="red"/>',
+    '  <g id="empty"/>',
+    '</svg>',
+    '',
+  ].join('\n');
+
+  assert.equal(new SvgSerializer().serialize(document), expected);
 });
 
 test('ignores blank lines and full-line comments', async () => {

@@ -19,10 +19,13 @@ circles, ellipses, lines, and text. The implemented commands are:
 
 Repeating `init` replaces the current document. Because `read` is not
 implemented yet, a newly initialized document has no source path; `save`
-without a filename therefore reports an error. Other shape types, containers,
-concrete editing commands, Composite, undo/redo, and the `box` plugin are not
-implemented. The `Command` interface and `CommandRegistry` foundation exist,
-but no concrete command classes or command history are implemented.
+without a filename therefore reports an error. Group containers now exist in
+the model and serialize nested SVG, but CLI commands for creating or
+populating groups (`create g`, `create ... in`, `group`, `ungroup`) are not
+implemented. Other shape types, concrete editing commands, undo/redo, and the
+`box` plugin are not implemented. The `Command` interface and
+`CommandRegistry` foundation exist, but no concrete command classes or command
+history are implemented.
 
 ## Requirements
 
@@ -86,7 +89,7 @@ Input rules:
 The source layout follows the assignment architecture:
 
 - `src/cli/` — entry point, interactive loop, tokenization, command parsing, and tree output.
-- `src/model/` — `Shape`, `Rect`, `Circle`, `Ellipse`, `Line`, `Text`, `Document`, container/ID management, and `ShapeFactory`.
+- `src/model/` — `Shape`, `Rect`, `Circle`, `Ellipse`, `Line`, `Text`, `Group`, `Document`, container/ID management, and `ShapeFactory`.
 - `src/commands/` — `Command` interface and `CommandRegistry` foundation; concrete edit commands and undo/redo are planned.
 - `src/io/` — SVG serialization and file writing.
 - `src/errors/` — shared `EditorError` type for expected editor errors.

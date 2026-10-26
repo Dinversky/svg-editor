@@ -1,3 +1,4 @@
+import { Group } from './Group.js';
 import { RootContainer } from './RootContainer.js';
 import type { Shape } from './Shape.js';
 import type { ShapeContainer } from './ShapeContainer.js';
@@ -30,6 +31,10 @@ export class Document {
 
   public get root(): ShapeContainer {
     return this.rootContainer;
+  }
+
+  public createGroup(id: string): Group {
+    return new Group(id, this.shapeRegistry);
   }
 
   public addShape(shape: Shape): boolean {

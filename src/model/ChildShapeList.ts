@@ -15,7 +15,7 @@ export class ChildShapeList {
   }
 
   public add(shape: Shape): boolean {
-    if (shape.parent !== null) {
+    if (shape.parent !== null || this.createsCycle(shape)) {
       return false;
     }
 
@@ -49,5 +49,20 @@ export class ChildShapeList {
 
   public has(shape: Shape): boolean {
     return this.childShapes.includes(shape);
+  }
+
+  private createsCycle(shape: Shape): boolean {
+    let ancestor: ShapeContainer | null = this.owner;
+
+    while (ancestor !== null) {
+      // 容器祖先可能是 Group；Shape 与 ShapeContainer 类型不重叠，按对象身份比较。
+      if (ancestor === (shape as unknown)) {
+        return true;
+      }
+
+      ancestor = ancestor.parent;
+    }
+
+    return false;
   }
 }

@@ -14,6 +14,10 @@ export class RootContainer implements ShapeContainer {
     return this.childList.children;
   }
 
+  public get parent(): ShapeContainer | null {
+    return null;
+  }
+
   public add(shape: Shape): boolean {
     return this.childList.add(shape);
   }
