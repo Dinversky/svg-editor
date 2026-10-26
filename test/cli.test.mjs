@@ -13,6 +13,8 @@ const { Document } = require('../dist/model/Document.js');
 const { Ellipse } = require('../dist/model/Ellipse.js');
 const { Line } = require('../dist/model/Line.js');
 const { Rect } = require('../dist/model/Rect.js');
+const { ShapeFactory } = require('../dist/model/ShapeFactory.js');
+const { ShapeRegistry } = require('../dist/model/ShapeRegistry.js');
 const { Text } = require('../dist/model/Text.js');
 const { SvgSerializer } = require('../dist/io/SvgSerializer.js');
 
@@ -106,6 +108,7 @@ test('prints the exact banner, handles help, unknown commands, and exits', async
     /create line <id> <x1> <y1> <x2> <y2> \[stroke\]/,
   );
   assert.match(result.stdout, /create text <id> <x> <y> "content"/);
+  assert.match(result.stdout, /create g <id>/);
   assert.match(result.stdout, /^error: unknown command: unknown$/m);
   assert.doesNotMatch(result.stdout, /error: error:/);
   assert.doesNotMatch(result.stdout, /svg> /);
@@ -565,6 +568,163 @@ test('rejects invalid texts and duplicate IDs without changing the document', as
     2,
   );
   assert.doesNotMatch(result.stdout, /text#t1 \(30,40\)/);
+});
+
+test('creates empty groups and serializes them in document order', async (t) => {
+  const tempDir = createTempDir(t);
+  const filePath = path.join(tempDir, 'groups.svg');
+
+  const result = await runCli(
+    'init 400 300\n' +
+    'create g g1\n' +
+    'create rect r1 0 0 10 10\n' +
+    'tree\n' +
+    `save ${filePath}\n` +
+    'exit\n',
+  );
+
+  assert.equal(result.code, 0);
+  assert.match(result.stdout, /g#g1 created/);
+  assert.ok(result.stdout.includes(`saved to ${filePath} (2 elements)`));
+
+  const lines = withoutPrompt(result.stdout).split('\n');
+  const treeIndex = lines.indexOf('svg (400x300)');
+  assert.notEqual(treeIndex, -1);
+  assert.equal(lines[treeIndex + 1], '├── g#g1');
+  assert.equal(lines[treeIndex + 2], '└── rect#r1 x=0 y=0 w=10 h=10');
+
+  const expectedSvg = [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300" viewBox="0 0 400 300">',
+    '  <g id="g1"/>',
+    '  <rect id="r1" x="0" y="0" width="10" height="10"/>',
+    '</svg>',
+    '',
+  ].join('\n');
+
+  assert.equal(readFileSync(filePath, 'utf8'), expectedSvg);
+});
+
+test('rejects invalid groups and duplicate IDs without changing the document', async () => {
+  const result = await runCli(
+    'init\n' +
+    'create rect keep 0 0 10 10\n' +
+    'create g g1\n' +
+    'create g g1\n' +
+    'create g\n' +
+    'create g extra extra\n' +
+    'tree\n' +
+    'exit\n',
+  );
+
+  assert.equal(result.code, 0);
+  assert.match(result.stdout, /error: id already exists: g1/);
+  assert.equal(
+    (result.stdout.match(/error: usage: create g/g) ?? []).length,
+    2,
+  );
+
+  const lines = result.stdout.split('\n');
+  assert.ok(lines.includes('├── rect#keep x=0 y=0 w=10 h=10'));
+  assert.ok(lines.includes('└── g#g1'));
+  assert.equal(
+    lines.filter((line) => line.startsWith('├──') || line.startsWith('└──')).length,
+    2,
+  );
+});
+
+test('ShapeFactory creates all registered shape types through one interface', () => {
+  const factory = new ShapeFactory();
+  const registry = new ShapeRegistry();
+  const rect = factory.create('rect', {
+    id: 'r1',
+    numbers: [1, 2, 3, 4],
+    fill: 'red',
+  });
+  const circle = factory.create('circle', {
+    id: 'c1',
+    numbers: [5, 6, 7],
+  });
+  const ellipse = factory.create('ellipse', {
+    id: 'e1',
+    numbers: [8, 9, 10, 11],
+  });
+  const line = factory.create('line', {
+    id: 'l1',
+    numbers: [12, 13, 14, 15],
+  });
+  const text = factory.create('text', {
+    id: 't1',
+    numbers: [16, 17],
+    content: 'Hello',
+  });
+  const group = factory.create('g', { id: 'g1', registry });
+
+  assert.ok(rect instanceof Rect);
+  assert.ok(circle instanceof Circle);
+  assert.ok(ellipse instanceof Ellipse);
+  assert.ok(line instanceof Line);
+  assert.ok(text instanceof Text);
+  assert.equal(rect.describe(), 'rect#r1 x=1 y=2 w=3 h=4 fill=red');
+  assert.equal(circle.describe(), 'circle#c1 cx=5 cy=6 r=7');
+  assert.equal(ellipse.describe(), 'ellipse#e1 cx=8 cy=9 rx=10 ry=11');
+  assert.equal(line.describe(), 'line#l1 (12,13) -> (14,15)');
+  assert.equal(text.describe(), 'text#t1 (16,17) "Hello"');
+  assert.equal(group.describe(), 'g#g1');
+  assert.equal(factory.has('g'), true);
+
+  assert.deepEqual(
+    factory.types().sort(),
+    ['circle', 'ellipse', 'g', 'line', 'rect', 'text'],
+  );
+
+  const types = factory.types();
+  types.push('custom');
+  assert.equal(factory.has('custom'), false);
+  assert.equal(factory.types().includes('custom'), false);
+});
+
+test('ShapeFactory rejects unknown shape types with a stable error', () => {
+  const factory = new ShapeFactory();
+
+  assert.throws(
+    () => factory.create('missing', { id: 'x' }),
+    { message: 'unknown shape type: missing (is the plugin loaded?)' },
+  );
+  assert.equal(factory.has('missing'), false);
+});
+
+test('ShapeFactory rejects duplicate and empty registrations without overwriting', () => {
+  const factory = new ShapeFactory();
+  const creator = () => new Rect('x', 0, 0, 1, 1);
+
+  assert.throws(
+    () => factory.register('rect', creator),
+    { message: 'shape type already registered: rect' },
+  );
+  assert.throws(
+    () => factory.register('', creator),
+    { message: 'shape type must not be empty' },
+  );
+  assert.throws(
+    () => factory.register('   ', creator),
+    { message: 'shape type must not be empty' },
+  );
+
+  const original = factory.create('rect', {
+    id: 'r1',
+    numbers: [0, 0, 1, 1],
+  });
+  assert.ok(original instanceof Rect);
+  assert.equal(original.id, 'r1');
+
+  factory.register('custom', creator);
+  assert.equal(factory.has('custom'), true);
+  assert.equal(factory.create('custom', { id: 'x' }).id, 'x');
+  assert.throws(
+    () => factory.register(' custom ', creator),
+    { message: 'shape type already registered: custom' },
+  );
 });
 
 test('treats shape IDs as case-sensitive', async () => {

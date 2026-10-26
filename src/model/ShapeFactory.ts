@@ -1,62 +1,135 @@
 import { Circle } from './Circle.js';
 import { Ellipse } from './Ellipse.js';
+import { Group } from './Group.js';
 import { Line } from './Line.js';
 import { Rect } from './Rect.js';
+import type { Shape } from './Shape.js';
+import type { ShapeRegistry } from './ShapeRegistry.js';
 import { Text } from './Text.js';
 
+export interface ShapeCreation {
+  readonly id: string;
+  readonly numbers?: readonly number[];
+  readonly fill?: string;
+  readonly stroke?: string;
+  readonly content?: string;
+  readonly registry?: ShapeRegistry;
+}
+
+export type ShapeCreator = (creation: ShapeCreation) => Shape;
+
 export class ShapeFactory {
-  public supports(type: string): boolean {
-    return type === 'rect'
-      || type === 'circle'
-      || type === 'ellipse'
-      || type === 'line'
-      || type === 'text';
+  private readonly creators = new Map<string, ShapeCreator>();
+
+  public constructor() {
+    this.register('rect', (creation) => new Rect(
+      creation.id,
+      this.requireNumber(creation, 0, 'x'),
+      this.requireNumber(creation, 1, 'y'),
+      this.requireNumber(creation, 2, 'width'),
+      this.requireNumber(creation, 3, 'height'),
+      creation.fill,
+    ));
+
+    this.register('circle', (creation) => new Circle(
+      creation.id,
+      this.requireNumber(creation, 0, 'cx'),
+      this.requireNumber(creation, 1, 'cy'),
+      this.requireNumber(creation, 2, 'r'),
+      creation.fill,
+    ));
+
+    this.register('ellipse', (creation) => new Ellipse(
+      creation.id,
+      this.requireNumber(creation, 0, 'cx'),
+      this.requireNumber(creation, 1, 'cy'),
+      this.requireNumber(creation, 2, 'rx'),
+      this.requireNumber(creation, 3, 'ry'),
+      creation.fill,
+    ));
+
+    this.register('line', (creation) => new Line(
+      creation.id,
+      this.requireNumber(creation, 0, 'x1'),
+      this.requireNumber(creation, 1, 'y1'),
+      this.requireNumber(creation, 2, 'x2'),
+      this.requireNumber(creation, 3, 'y2'),
+      creation.stroke,
+    ));
+
+    this.register('text', (creation) => new Text(
+      creation.id,
+      this.requireNumber(creation, 0, 'x'),
+      this.requireNumber(creation, 1, 'y'),
+      this.requireContent(creation),
+    ));
+
+    this.register('g', (creation) => new Group(
+      creation.id,
+      this.requireRegistry(creation),
+    ));
   }
 
-  public createRect(
-    id: string,
-    x: number,
-    y: number,
-    width: number,
-    height: number,
-    fill?: string,
-  ): Rect {
-    return new Rect(id, x, y, width, height, fill);
+  public register(type: string, creator: ShapeCreator): void {
+    const name = type.trim();
+
+    if (name.length === 0) {
+      throw new Error('shape type must not be empty');
+    }
+
+    if (this.creators.has(name)) {
+      throw new Error(`shape type already registered: ${name}`);
+    }
+
+    this.creators.set(name, creator);
   }
 
-  public createCircle(
-    id: string,
-    cx: number,
-    cy: number,
-    radius: number,
-    fill?: string,
-  ): Circle {
-    return new Circle(id, cx, cy, radius, fill);
+  public has(type: string): boolean {
+    return this.creators.has(type.trim());
   }
 
-  public createEllipse(
-    id: string,
-    cx: number,
-    cy: number,
-    rx: number,
-    ry: number,
-    fill?: string,
-  ): Ellipse {
-    return new Ellipse(id, cx, cy, rx, ry, fill);
+  public create(type: string, creation: ShapeCreation): Shape {
+    const name = type.trim();
+    const creator = this.creators.get(name);
+
+    if (creator === undefined) {
+      throw new Error(`unknown shape type: ${name} (is the plugin loaded?)`);
+    }
+
+    return creator(creation);
   }
 
-  public createLine(
-    id: string,
-    x1: number,
-    y1: number,
-    x2: number,
-    y2: number,
-    stroke?: string,
-  ): Line {
-    return new Line(id, x1, y1, x2, y2, stroke);
+  public types(): string[] {
+    return [...this.creators.keys()];
   }
 
-  public createText(id: string, x: number, y: number, content: string): Text {
-    return new Text(id, x, y, content);
+  private requireNumber(
+    creation: ShapeCreation,
+    index: number,
+    name: string,
+  ): number {
+    const value = creation.numbers?.[index];
+
+    if (value === undefined) {
+      throw new Error(`missing shape parameter: ${name}`);
+    }
+
+    return value;
+  }
+
+  private requireContent(creation: ShapeCreation): string {
+    if (creation.content === undefined) {
+      throw new Error('missing shape parameter: content');
+    }
+
+    return creation.content;
+  }
+
+  private requireRegistry(creation: ShapeCreation): ShapeRegistry {
+    if (creation.registry === undefined) {
+      throw new Error('missing shape parameter: registry');
+    }
+
+    return creation.registry;
   }
 }

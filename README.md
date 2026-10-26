@@ -13,19 +13,20 @@ circles, ellipses, lines, and text. The implemented commands are:
 - `create ellipse <id> <cx> <cy> <rx> <ry> [fill]` — add an ellipse.
 - `create line <id> <x1> <y1> <x2> <y2> [stroke]` — add a line.
 - `create text <id> <x> <y> "content"` — add a text element.
+- `create g <id>` — add an empty group.
 - `tree` — display the canvas and its shapes in document order.
 - `save [file.svg]` — serialize the canvas to SVG and write it to a file.
 - `help` / `exit`.
 
 Repeating `init` replaces the current document. Because `read` is not
 implemented yet, a newly initialized document has no source path; `save`
-without a filename therefore reports an error. Group containers now exist in
-the model and serialize nested SVG, but CLI commands for creating or
-populating groups (`create g`, `create ... in`, `group`, `ungroup`) are not
-implemented. Other shape types, concrete editing commands, undo/redo, and the
-`box` plugin are not implemented. The `Command` interface and
-`CommandRegistry` foundation exist, but no concrete command classes or command
-history are implemented.
+without a filename therefore reports an error. Group containers exist in the
+model and empty groups can be created with `create g`, but commands for
+populating groups (`create ... in`), `group`/`ungroup`, and recursive tree
+output are not implemented. Other shape types, concrete editing commands,
+undo/redo, and the `box` plugin are not implemented. The `Command` interface
+and `CommandRegistry` foundation exist, but no concrete command classes or
+command history are implemented.
 
 ## Requirements
 
@@ -59,6 +60,7 @@ create circle c1 100 100 20 red
 create ellipse e1 300 150 80 50 green
 create line l1 100 250 700 250 black
 create text t1 40 300 "Hello SVG"
+create g markers
 tree
 save demo.svg
 exit

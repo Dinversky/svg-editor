@@ -1,13 +1,15 @@
-import { Group } from './Group.js';
+import type { Group } from './Group.js';
 import { RootContainer } from './RootContainer.js';
 import type { Shape } from './Shape.js';
 import type { ShapeContainer } from './ShapeContainer.js';
+import { ShapeFactory } from './ShapeFactory.js';
 import { ShapeRegistry } from './ShapeRegistry.js';
 
 export class Document {
   private readonly canvasWidth: number;
   private readonly canvasHeight: number;
   private readonly shapeRegistry: ShapeRegistry;
+  private readonly shapeFactory = new ShapeFactory();
   private readonly rootContainer: RootContainer;
 
   constructor(width: number, height: number) {
@@ -34,7 +36,10 @@ export class Document {
   }
 
   public createGroup(id: string): Group {
-    return new Group(id, this.shapeRegistry);
+    return this.shapeFactory.create('g', {
+      id,
+      registry: this.shapeRegistry,
+    }) as Group;
   }
 
   public addShape(shape: Shape): boolean {
