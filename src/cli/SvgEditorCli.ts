@@ -159,9 +159,19 @@ export class SvgEditorCli {
 
   private tree(args: string[]): void {
     const document = this.requireDocument();
-    this.commandParser.parseTree(args);
+    const id = this.commandParser.parseTree(args);
 
-    console.log(this.treeFormatter.format(document));
+    if (id === undefined) {
+      console.log(this.treeFormatter.format(document));
+      return;
+    }
+
+    const shape = document.findShape(id);
+    if (shape === undefined) {
+      throw new EditorError(`no such shape: ${id}`);
+    }
+
+    console.log(this.treeFormatter.formatSubtree(shape));
   }
 
   private save(args: string[]): void {
@@ -197,7 +207,7 @@ export class SvgEditorCli {
     console.log('  create text <id> <x> <y> "content"             Create a text element.');
     console.log('  create g <id>                                  Create an empty group.');
     console.log('  create <type> ... [in <group>]                 Add a shape to the root or an existing group.');
-    console.log('  tree                                          Show the document tree.');
+    console.log('  tree [id]                                     Show the document tree or a node subtree.');
     console.log('  save [file.svg]                               Save the current document.');
     console.log('  help                                          Show this help message.');
     console.log('  exit                                          Exit the editor.');

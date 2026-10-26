@@ -6,7 +6,7 @@
 
 | 模块              | 职责                                            | 当前状态                   |
 | --------------- | --------------------------------------------- | ---------------------- |
-| `src/cli/`      | 读取输入、独立词法解析、命令参数解析（`CommandParser`）、命令分派并输出结果，格式化 tree。 | 已实现（含颜色校验）        |
+| `src/cli/`      | 读取输入、独立词法解析、命令参数解析（`CommandParser`）、命令分派并输出结果，递归格式化 tree。 | 已实现（含颜色校验与子树查询） |
 | `src/model/`    | 文档、根容器、Group 容器、子节点管理、全局 ID 索引、多态图形与注册表式图形工厂。 | 已实现 Stage 3-G（含 `in` 容器归属） |
 | `src/commands/` | Command 接口、命令工厂注册表；具体编辑命令与 undo/redo 后续实现。    | 基础层已实现，具体命令未实现         |
 | `src/io/`       | SVG 序列化与文件写入。                                 | 已实现 save 子集            |
@@ -28,15 +28,15 @@
 - `Line`：继承 `Shape`，用私有字段保存起止点和可选 stroke，构造时校验所有端点为有限数值；tree 使用作业约定的 `(x1,y1) -> (x2,y2)` 格式，自身负责 `<line>` 元素生成。
 - `Text`：继承 `Shape`，用私有字段保存位置和文本内容，构造时校验坐标为有限数值；tree 使用 `(x,y) "content"` 格式，SVG 文本内容按 XML 规则转义，属性值使用属性转义。
 - `ShapeFactory`：以类型名为键的注册表式工厂，内置注册 `rect`、`circle`、`ellipse`、`line`、`text` 和 `g`；通过 `register`、`has`、`create(type, creation)`、`types()` 统一创建图形，`g` 创建参数携带文档 registry。
-- `SvgEditorCli`：只承担命令协调。持有当前 `Document`，用 `readline` 逐行读取，先交给 `Tokenizer` 生成 token，再按命令名分派 `init`、`create`、`tree`、`save`、`help`、`exit`；各命令的参数解析全部委托 `CommandParser`，自身负责文档检查、重复 ID 检查、容器选择、经 `ShapeFactory` 创建图形并输出结果；`handleLine` 是统一错误边界，捕获 Tokenizer、CommandParser 和命令异常后输出单行 `error: ...`；启动时输出固定单行 banner，仅在 TTY 交互模式输出 `svg> ` 提示符。
-- `CommandParser`：命令参数解析层。`parseInit`/`parseCreate`/`parseTree`/`parseSave` 把 token 数组转换为结构化结果（`ParsedCreate` 携带图形类型、id、`ShapeCreation` 和可选 `containerId`）；`create` 的类型识别、参数个数/数值/正数校验、`in <containerId>` 尾缀拆分和 fill/stroke 颜色语法校验都集中在此；颜色接受 SVG 命名关键字（大小写不敏感）与 3/6 位十六进制，非法时报 `invalid color for <field>: <value>`；解析错误抛出 `EditorError`，不访问文档、不构造图形、不输出日志。
+- `SvgEditorCli`：只承担命令协调。持有当前 `Document`，用 `readline` 逐行读取，先交给 `Tokenizer` 生成 token，再按命令名分派 `init`、`create`、`tree`、`save`、`help`、`exit`；各命令的参数解析全部委托 `CommandParser`，自身负责文档检查、重复 ID 检查、容器选择、经 `ShapeFactory` 创建图形并输出结果；`tree` 带 ID 时查找目标节点并报 `no such shape`，再调用 `TreeFormatter` 的子树格式化；`handleLine` 是统一错误边界，捕获 Tokenizer、CommandParser 和命令异常后输出单行 `error: ...`；启动时输出固定单行 banner，仅在 TTY 交互模式输出 `svg> ` 提示符。
+- `CommandParser`：命令参数解析层。`parseInit`/`parseCreate`/`parseTree`/`parseSave` 把 token 数组转换为结构化结果（`ParsedCreate` 携带图形类型、id、`ShapeCreation` 和可选 `containerId`；`parseTree` 返回可选节点 ID）；`create` 的类型识别、参数个数/数值/正数校验、`in <containerId>` 尾缀拆分和 fill/stroke 颜色语法校验都集中在此；颜色接受 SVG 命名关键字（大小写不敏感）与 3/6 位十六进制，非法时报 `invalid color for <field>: <value>`；解析错误抛出 `EditorError`，不访问文档、不构造图形、不输出日志。
 - `Tokenizer`：把一行原始输入切分为 token 数组，处理普通空白、双引号参数和整行注释；引号错误抛出 `EditorError`；不执行命令、不访问文档、不输出日志。
 - `EditorError`：位于 `src/errors/`，继承 `Error` 并设置 `name = 'EditorError'`，只保存完整用户可读消息；不依赖模型、CLI、I/O 或具体命令，也不包含错误码或分类系统。
 - `Command`：接口，定义 `execute(): void` 和 `undo(): void` 命令契约；不包含 CLI、文档或输出逻辑。
 - `CommandRegistry`：以命令名为键保存 `CommandFactory`，提供注册、查询、创建和名称列表；不执行命令，也不依赖模型或 I/O。
 - `SvgSerializer`：读取 `Document` 的尺寸和根容器内容，通过 `Shape.toSvgElement()` 生成 SVG 文本，不接触文件，也不读取图形专属属性。
 - `SvgFileWriter`：只负责把文本写入指定路径。
-- `TreeFormatter`：读取 `Document` 的尺寸和根容器内容，通过 `Shape.describe()` 生成稳定的 tree 文本，不读取图形专属属性。
+- `TreeFormatter`：读取 `Document` 的尺寸和根容器内容，通过 `Shape.describe()` 递归生成稳定 tree 文本；`format(document)` 输出完整树，`formatSubtree(shape)` 以目标节点自身为根输出子树；通过 `Shape.asContainer()` 递归子节点，不使用具体图形类型判断；空文档输出 `(empty)`。
 
 ### 依赖方向
 
@@ -178,6 +178,7 @@ CommandRegistry ..> Command : creates via CommandFactory
 - Stage 3-F 将 `ShapeFactory` 改为注册表式工厂：私有 `Map<string, ShapeCreator>` 在构造时注册 `rect`/`circle`/`ellipse`/`line`/`text`/`g`，统一接口为 `register`、`has`、`create(type, creation)`、`types()`。重复/空白类型注册抛错且不覆盖，未知类型错误稳定，`types()` 返回副本。CLI 的每类参数解析分支只构建 `ShapeCreation`，构造统一交给工厂；`Document.createGroup()` 也委托工厂并传入 registry；CLI 新增 `create g` 空组创建。`CommandRegistry` 未改动。
 - Stage 3-G 实现 `create ... in`：所有 `create` 使用 `create <type> <id> [params…] [in <containerId>]`。`in` 子句必须位于命令末尾，由关键字 `in` 和其后的容器 ID 两个 token 组成；省略时加入画布根。目标必须已存在且 `asContainer()` 非空，否则分别报 `no such container: <id>` / `not a container: <id>`；成功消息为 `type#id created in g#containerId`，根级创建保持原消息。`create g` 也支持 `in`，因此可创建嵌套组。可选 fill/stroke 位置上的单个尾缀 `in` 仍按样式值处理，只有其后还有容器 ID 时才构成 `in` 子句。`Document.countShapes()` 让 `save` 的元素计数包含 Group 及嵌套图形。
 - 3-G 后置重构（用户指令）引入 `CommandParser`，形成 `Tokenizer → CommandParser → SvgEditorCli → ShapeFactory → Shape` 的解析-分派链路：CLI 不再包含各图形的参数解析与按类型展开的构造分支；类型相关逻辑仅保留在解析层的一张参数语法表（`createSpecs`，标注为待重构点：与 `ShapeFactory` 注册表覆盖同一组类型，新增图形时两处需同步）；图形构造统一经 `ShapeFactory` 注册表（`g` 仍经 `Document.createGroup()` 注入 registry）。同时新增 fill/stroke 颜色语法校验：接受 SVG 命名关键字（CSS 颜色关键字全集，大小写不敏感）与 3/6 位十六进制（大小写不敏感），非法时报 `invalid color for <field>: <value>`；省略颜色时保持 SVG 属性省略行为。错误优先级随之规整为：无文档 → 参数/颜色校验 → 重复 ID → 容器校验（此前容器校验先于参数校验）；既有测试全部保持通过。
+- Stage 3-H 扩展 `tree`：`TreeFormatter.format()` 递归遍历 `ShapeContainer`，按 `├──`/`└──` 和 `│`/空格前缀输出多层结构；`formatSubtree(shape)` 以目标节点自身为根输出子树，普通图形只输出自身。CLI 通过 `Document.findShape()` 查找 `tree <id>` 目标，缺失时抛 `no such shape`；`CommandParser.parseTree` 接受 0 或 1 个参数。未新增树内元素计数行，`(N elements)` 仍沿用既有 `save` 的 `Document.countShapes()` 规则。
 - `AGENTS.md` 要求 Command、Composite 和 undo/redo；当前已实现 Command 接口/注册表基础以及 Group 容器结构，但具体编辑命令、Composite 统一操作和 undo/redo 仍未实现，因此仍是阶段性缺失，不是最终架构。
 - `SvgEditorCli.execute` 目前仍是唯一的命令名分派点；`CommandRegistry` 存在但未接入 CLI。后续实现具体命令时再把注册表接入分派流程，并把编辑操作封装成 undo 单元。
 - 图形类型、命令集合、SVG 格式是主要变化点；`Shape` 为新增图形提供统一多态接口，`Circle`、`Ellipse`、`Line` 和 `Text` 验证了该扩展路径；`ShapeFactory` 已用注册表集中类型到创建器的映射，新增图形不再扩展类型分支；`Shape.asContainer()` 让容器识别和计数保持多态，`ShapeContainer`/`ChildShapeList` 由 `RootContainer` 和 `Group` 复用，`CommandRegistry` 为具体命令注册预留入口，`model`、`io` 与 `commands` 的边界已划分。本阶段不提前创建具体命令类或插件类。
@@ -375,7 +376,15 @@ CommandRegistry ..> Command : creates via CommandFactory
 - 3-G 后置重构验证：`npm run typecheck` 通过；`npm test` 79/79 通过（CLI 文件 59 + CommandRegistry 8 + Tokenizer 12）；`git diff --check` 无空白错误（仅 LF/CRLF 提示）。本任务未手工打开浏览器验收 SVG 渲染。
 - 3-G 后置重构已知限制：颜色校验只覆盖 CLI 输入路径，模型层直接构造（如测试中的 `new Rect(..., 'red&"<>')`）仍不校验，属于既有的模型/CLI 校验分工；错误优先级规整后，同一命令同时存在“坏参数 + 坏容器”时先报参数错误（此前先报容器错误），既有测试未覆盖该组合；尾缀单个 `in`（如 `create rect r 1 2 3 4 in`）此前被当作 fill 值接受，现在会因颜色校验报错，属任务要求的预期行为变化。
 - README 决策：颜色校验是新的用户可见行为，根 README 更新命令说明中 fill/stroke 的合法形式；构建流程与其他命令行为不变。
-- `项目规划.md` 同步：更新当前基线（HEAD `5f7d600`、本重构本地未提交、79/79），修正 3-G 条目的过时提交状态，并在 3-G 与 3-H 之间记录本重构；下一项仍为 3-H。
+- `项目规划.md` 同步：更新当前基线（HEAD `5f7d600`、本重构本地未提交、79/79），修正 3-G 条目的过时提交状态，并在 3-G 与 3-H 之间记录本重构；下一项仍为 3-H。该重构后已提交为 `525fca1`。
+- Task 3-H 开始前检查：分支 `main`，HEAD `525fca1`（`refactor(cli): 新增 CommandParser 并实现颜色校验，精简 CLI 代码`），`origin/main` 为 `5f7d600`，本地领先 1 个提交；工作区仅有用户对 `项目规划.md` 的任务说明修改（未触碰）；79 个测试作为回归基线。Node.js v22.22.2，npm 10.9.7。
+- Task 3-H 作业核对：作业 `tree <id>` 示例以目标节点自身为根（如 `g#n1`），不再输出 `svg (WxH)` 头；`tree` 输出本身没有 `(N elements)` 行，元素计数沿用既有 `save` 消息和 `Document.countShapes()` 规则，本任务不重复实现计数。
+- Task 3-H 设计决策：`TreeFormatter.format(document)` 递归遍历 `ShapeContainer`，用 `prefix + (├──/└──)` 和 `prefix + (│   /    )` 延续或终止竖线；子节点通过 `Shape.asContainer()` 获取，不使用具体类型判断。`formatSubtree(shape)` 以目标 `describe()` 为第一行，Group 再递归子节点，普通图形只输出自身。CLI 的 `tree` 通过 `CommandParser.parseTree` 接受 0 或 1 个 ID，`Document.findShape()` 查找，缺失时报 `no such shape`，多余参数报 `usage: tree [id]`。
+- Task 3-H 实现：修改 `src/cli/TreeFormatter.ts`（递归全树 + 子树格式化）、`src/cli/CommandParser.ts`（`parseTree` 返回可选 ID、`tree [id]` usage）、`src/cli/SvgEditorCli.ts`（目标查找、`no such shape`、help）和 `test/cli.test.mjs`（3 个 tree 测试并更新 CommandParser 单元）；模型层未修改。
+- Task 3-H 验证：`npm run build && node --test test/cli.test.mjs` 为 62/62 通过；`npm run typecheck` 通过；`npm test` 为 82/82 通过（CLI 文件 62 + CommandRegistry 8 + Tokenizer 12）；`git diff --check` 无空白错误（仅 LF/CRLF 提示）。本任务未手工打开浏览器验收 SVG 渲染。
+- Task 3-H 已知限制：`tree` 输出不包含元素计数行；计数仅由 `save` 消息体现（既有嵌套测试为 7 elements）。`tree <id>` 的子树根不显示 `svg (WxH)`，与作业示例一致；空 Group 子树只显示 Group 自身，不追加 `(empty)`。
+- README 决策：`tree` 从无参数变为 `tree [id]`，属于用户可见命令语法变化，根 README 更新命令列表；其他命令和构建流程不变。
+- `项目规划.md` 同步：更新当前基线（3-G+ 已提交为 `525fca1`、3-H 本地未提交、82/82），标记 3-H 完成并把下一项标为 3-I。
 
 - 测试清理（2026-10-26）：删除 `test/cli.test.mjs` 中 15 个重复或低价值用例（各图形 getter/describe、重复的失败状态/重复 ID、重复的 rect 端到端测试和 `keeps unquoted command parsing unchanged`），CLI 测试由 57 降至 42，完整测试由 77/77 降至 62/62；文件由 1274 行降至 1057 行。保留各图形的拒绝路径、SVG 转义、CLI 集成、Document 不变量、Tokenizer 错误和 EOF/管道测试。未修改 Text 实现。
 
@@ -389,7 +398,8 @@ CommandRegistry ..> Command : creates via CommandFactory
 - 容器归属：`CommandParser` 拆出末尾 `in <containerId>`（默认无），CLI 解析目标：默认 `Document.root`；指定 ID 通过 `Document.findShape()` 查找，再由 `Shape.asContainer()` 判断是否是容器，不使用 `instanceof Group`。参数校验、重复 ID 检查和容器校验都完成后才调用目标容器的 `add`，错误文案为 `no such container` / `not a container`。
 - 命令解析：`SvgEditorCli` 不再包含参数解析代码；`init`/`tree`/`save` 的参数校验和 `create` 的全部参数校验（个数、数值、正数、text 内容、颜色）都在 `CommandParser`；`Tokenizer` 仍只负责词法切分，二者不重复。
 - 元素计数：`Document.countShapes()` 从根递归遍历，Group 自身和所有子图形各计一个；`save` 使用该计数，因此嵌套 Group 不再被漏计。
-- 容器规则：`RootContainer` 和 `Group` 共享 `ChildShapeList` 的添加/移除、顺序、父节点和 registry 规则；`ShapeContainer.parent` 使循环检查沿统一祖先链进行，`src/` 中没有 `instanceof Group` 分支。`TreeFormatter` 仍为根级平铺输出，Group 子树的递归显示留到 Task 3-H。
+- 容器规则：`RootContainer` 和 `Group` 共享 `ChildShapeList` 的添加/移除、顺序、父节点和 registry 规则；`ShapeContainer.parent` 使循环检查沿统一祖先链进行，`src/` 中没有 `instanceof Group` 分支。
+- tree 输出：`TreeFormatter.format()` 递归完整树，`formatSubtree()` 输出指定节点子树；两者都通过 `Shape.describe()`/`Shape.asContainer()` 工作，没有 Group/Circle/Text 等类型判断；完整树保留 `svg (WxH)` 头和空文档 `(empty)`，子树以目标节点自身为第一行。
 - 词法解析：`src/cli/` 中没有 `command.split(/\s+/)`；CLI 通过 `Tokenizer.tokenize()` 获取 token 数组后再分派。
 - 注册表：`CommandRegistry` 只提供注册、查询、创建和名称列表；不执行命令，不创建具体命令；CLI 当前未导入或使用它。
 - 一类一文件：上述实现类均为独立文件，文件名与类名一致。
@@ -400,8 +410,8 @@ CommandRegistry ..> Command : creates via CommandFactory
 
 - 环境：Node.js v22.22.2，npm 10.9.7。
 - `npm run typecheck`：通过，无类型错误。
-- 针对性测试：`npm run build` 后运行 `node --test test/cli.test.mjs`，59 个 CLI/模型测试全部通过（其中进程级 CLI 测试 48 个，CommandParser 单元 2 个，工厂/Group 模型测试 9 个）。
-- `npm test`：先构建，再运行 `node --test test/cli.test.mjs test/tokenizer.test.mjs test/command-registry.test.mjs`；79 个测试通过，0 失败（CLI 文件 59 + CommandRegistry 8 + Tokenizer 12）。
+- 针对性测试：`npm run build` 后运行 `node --test test/cli.test.mjs`，62 个 CLI/模型测试全部通过（其中进程级 CLI 测试 51 个，CommandParser 单元 2 个，工厂/Group 模型测试 9 个）。
+- `npm test`：先构建，再运行 `node --test test/cli.test.mjs test/tokenizer.test.mjs test/command-registry.test.mjs`；82 个测试通过，0 失败（CLI 文件 62 + CommandRegistry 8 + Tokenizer 12）。
 - 不变量检查：测试覆盖根容器顺序、大小写敏感 ID、重复 ID、重复/跨容器挂载、添加/移除失败不改状态、移除后清除父节点、ID 复用，以及 ID 索引与容器内容一致。
 - 引用检查：`src/` 中无 `Canvas`、`RectangleShape` 或 `createRectangle` 残留；`TreeFormatter`/`SvgSerializer` 读取 `Document.root.children`，只调用 `describe()`/`toSvgElement()`，未读取图形专属属性。
 - Circle 检查：构造器拒绝空 ID、非有限圆心和非正/非有限半径；测试覆盖 `cx`/`cy`/`r` 的正常访问、可选 fill、describe/SVG 属性顺序与转义；CLI 测试覆盖重复 ID、非法参数、缺少/多余参数，并断言失败后 tree 只保留原有图形。
@@ -412,25 +422,27 @@ CommandRegistry ..> Command : creates via CommandFactory
 - ShapeFactory 检查：测试覆盖六个内置类型均通过 `create(type, creation)` 创建、未知类型稳定错误、重复注册抛错且不覆盖、空/纯空白名称拒绝，以及 `types()` 返回副本；CLI 的 rect/circle/ellipse/line/text/g 创建均经过统一工厂接口。
 - `in` 检查：测试覆盖默认根、指定 Group、嵌套 Group、g/rect/text/line/circle 的 `in` 创建、组内成功消息、嵌套 SVG 输出、`save` 元素计数、目标不存在、目标不是容器、跨容器重复 ID，以及失败后 SVG 不含被拒绝的图形。
 - 颜色检查：CLI 测试覆盖命名色（`red`、`navy`、`darkseagreen`）、大小写不敏感（`Red`）、6 位与 3 位 hex（`#4a90d9`、`#ABC`、`#fff`）的接受，以及 `notacolor`、`#ff`、`#gggggg`、`12red` 等非法 fill/stroke 的拒绝和失败不改文档；CommandParser 单元测试覆盖结构化解析结果（numbers/fill/stroke/content/containerId）、未知类型、usage、正数校验和 init/tree/save 参数。
+- tree 检查：CLI 测试覆盖空文档 `(empty)`（既有）、普通图形平铺（既有）、单 Group 多子节点、多层嵌套的缩进与 `│` 延续、`tree <group>` 子树、`tree <shape>` 单节点、`tree <missing>` 的 `no such shape` 和多余参数的 `usage: tree [id]`；CommandParser 单元覆盖 `parseTree` 的 0/1/2 参数。`save` 嵌套元素计数回归沿用既有 `(7 elements)` 断言。
 - 解析分层检查：`SvgEditorCli` 中已无 `parseNumber`、参数分支或按类型的构造分支；`src/cli/` 的参数解析集中在 `CommandParser`，词法切分仍只在 `Tokenizer`。
 - 词法检查：`Tokenizer` 独立存在于 `src/cli/Tokenizer.ts`；`src/cli/` 中没有 `command.split(/\s+/)`；CLI 通过 token 数组分派，引号异常由 `handleLine` 统一输出且不退出。
 - 错误处理检查：CLI 命令方法中不再有 `console.log('error: ...')`；`error:` 前缀只由 `handleLine` 添加；测试覆盖未知命令、参数错误、无文档、写文件失败和 Tokenizer 错误，均只出现一次前缀。
 - 注册表检查：`CommandRegistry` 只以类型方式依赖 `Command`；测试覆盖注册、查询、创建、工厂调用、重复注册、空名称、未知命令、工厂异常和多名称独立；未执行命令，未创建具体命令，CLI 未导入注册表。
-- CLI 回归：48 个进程级 CLI 测试全部通过，覆盖 rect/circle/ellipse/line/text/g 创建、`in` 归属、颜色接受与拒绝、树输出、SVG 保存、banner 精确文本、管道无提示符、EOF 正常退出和失败不改文档；工厂与 Group 模型/序列化测试也全部通过。
+- CLI 回归：51 个进程级 CLI 测试全部通过，覆盖 rect/circle/ellipse/line/text/g 创建、`in` 归属、颜色接受与拒绝、完整/子树 tree 输出、SVG 保存、banner 精确文本、管道无提示符、EOF 正常退出和失败不改文档；工厂与 Group 模型/序列化测试也全部通过。
 - 交互提示符限制：当前自动化测试通过管道运行 CLI，只验证了管道输出不含 `svg> `；TTY 交互提示符由 `process.stdin.isTTY === true` 分支保留，未在自动化测试中验证。
-- 浏览器验收步骤仍见根 README；本重构任务未手工在浏览器中打开生成的 SVG。
-- Git 检查：本轮开始时 `main` 与 `origin/main` 均为 `5f7d600`，工作区仅含用户对 `AGENTS.md` 的未提交修改（未触碰）；完成后 `git diff --check` 无空白错误（仅有 LF/CRLF 提示），本任务改动为 4 个已跟踪文件修改、未跟踪 `src/cli/CommandParser.ts`；未创建 commit、push 或 tag。
+- 浏览器验收步骤仍见根 README；Task 3-H 未手工在浏览器中打开生成的 SVG。
+- Git 检查：本轮开始时 `main` 为 `525fca1`、`origin/main` 为 `5f7d600`（本地领先 1 个提交），工作区仅有用户对 `项目规划.md` 的修改；完成后 `git diff --check` 无空白错误（仅有 LF/CRLF 提示），工作区为 7 个已跟踪文件修改、无未跟踪文件；未创建 commit、push 或 tag。
 
 ## 未完成事项
 
-- `group`/`ungroup`、`addto` 和 tree 的 Group 子树递归显示尚未实现；`tree` 当前不显示已放入 Group 的子节点。
+- `group`/`ungroup`、`addto` 和 `show` 尚未实现；`tree` 已支持完整树和指定节点子树。
+- `tree` 输出不包含 `(N elements)` 行；元素计数仅由 `save` 消息体现，沿用 `Document.countShapes()`。
 - Group 在挂接文档前即可向共享 registry 添加子节点；移除非空 Group 不会递归处理后代，后代仍保留注册并形成脱离文档的子树。后续 Composite 编辑命令需明确这些生命周期语义。
 - `read`、`canvas`、`move`、`scale`、`set`、`delete`、`group`、`ungroup`、`addto`、`front`、`back`、`show`、`undo`、`redo`。
 - 具体编辑命令、命令历史、Composite 统一编辑操作和 undo/redo 尚未实现；`Command` 接口与 `CommandRegistry` 只是基础层，Group 目前具备容器结构、空组/嵌套组创建和序列化。
 - `save` 无文件名且无来源路径时明确报错；`read` 实现后再接入“保存到读入路径”。
 - 按本阶段规范，不支持行内注释、单引号引用和反斜杠转义；只有行首 `#` 作为整行注释。
 - Stage 2-E 已完成 `EditorError`、统一错误边界、固定单行 banner、TTY/管道提示符区分和 EOF/管道行为测试；交互式 TTY 提示符未纳入自动化测试。
-- Stage 3-A 已完成 Circle，Stage 3-B 已完成 Ellipse，Stage 3-C 已完成 Line，Stage 3-D 已完成 Text，Stage 3-E 已完成 Group 容器与嵌套 SVG 序列化，Stage 3-F 已完成注册表式工厂与 `create g`，Stage 3-G 已完成 `create ... in`；Stage 3 其余任务（Group 收编/拆分命令、tree 子树、show、集成验收）尚未完成。
+- Stage 3-A 已完成 Circle，Stage 3-B 已完成 Ellipse，Stage 3-C 已完成 Line，Stage 3-D 已完成 Text，Stage 3-E 已完成 Group 容器与嵌套 SVG 序列化，Stage 3-F 已完成注册表式工厂与 `create g`，Stage 3-G 已完成 `create ... in`，Stage 3-H 已完成递归 tree 与 `tree [id]`；Stage 3 其余任务（Group 收编/拆分命令、show、集成验收）尚未完成。
 - Tokenizer 不支持在双引号参数内转义双引号，CLI 无法直接输入包含双引号的 text 内容；模型层已正确处理并测试该情况，后续若需 CLI 支持需单独立项。
 - Text 的 tree 描述按作业格式用双引号包裹原始内容；内容自身含双引号时输出存在视觉歧义，未自行定义额外转义规则。
 - 阶段 2 的 A–E 已完成；具体编辑命令和 undo/redo 仍属于后续阶段。Command 接口/注册表基础已在 Task 6 完成，Stage 2-E 统一错误与 REPL 行为已在 Task 7 完成，Tokenizer 与双引号参数已在 Task 5 完成，Document、根容器和父节点基础已在 Task 4 完成。

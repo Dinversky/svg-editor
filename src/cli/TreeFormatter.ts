@@ -1,4 +1,5 @@
 import { Document } from '../model/Document.js';
+import type { Shape } from '../model/Shape.js';
 
 export class TreeFormatter {
   public format(document: Document): string {
@@ -10,11 +11,38 @@ export class TreeFormatter {
       return lines.join('\n');
     }
 
-    children.forEach((shape, index) => {
-      const branch = index === children.length - 1 ? '└──' : '├──';
-      lines.push(`${branch} ${shape.describe()}`);
-    });
+    this.appendChildren(children, '', lines);
+    return lines.join('\n');
+  }
+
+  public formatSubtree(shape: Shape): string {
+    const lines: string[] = [shape.describe()];
+    const container = shape.asContainer();
+
+    if (container !== null) {
+      this.appendChildren(container.children, '', lines);
+    }
 
     return lines.join('\n');
+  }
+
+  private appendChildren(
+    children: readonly Shape[],
+    prefix: string,
+    lines: string[],
+  ): void {
+    children.forEach((shape, index) => {
+      const last = index === children.length - 1;
+      lines.push(`${prefix}${last ? '└──' : '├──'} ${shape.describe()}`);
+
+      const container = shape.asContainer();
+      if (container !== null) {
+        this.appendChildren(
+          container.children,
+          `${prefix}${last ? '    ' : '│   '}`,
+          lines,
+        );
+      }
+    });
   }
 }

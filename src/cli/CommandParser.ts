@@ -174,10 +174,12 @@ export class CommandParser {
     return { shapeType, id: shapeArgs[1], creation, containerId };
   }
 
-  public parseTree(args: string[]): void {
-    if (args.length > 0) {
-      this.failUsage('tree');
+  public parseTree(args: string[]): string | undefined {
+    if (args.length > 1) {
+      this.failUsage('tree [id]');
     }
+
+    return args[0];
   }
 
   public parseSave(args: string[]): string {

@@ -19,7 +19,8 @@ circles, ellipses, lines, and text. The implemented commands are:
 - Color parameters (`fill`/`stroke`) accept SVG color keywords (e.g. `red`,
   case-insensitive) and 3/6-digit hex forms (`#fff`, `#ff0000`); invalid colors
   are rejected with a single-line error.
-- `tree` — display the canvas and its shapes in document order.
+- `tree [id]` — display the full canvas tree, or only the subtree rooted at
+  the given shape/group ID.
 - `save [file.svg]` — serialize the canvas to SVG and write it to a file.
 - `help` / `exit`.
 

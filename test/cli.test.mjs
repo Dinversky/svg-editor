@@ -111,6 +111,7 @@ test('prints the exact banner, handles help, unknown commands, and exits', async
   assert.match(result.stdout, /create text <id> <x> <y> "content"/);
   assert.match(result.stdout, /create g <id>/);
   assert.match(result.stdout, /create <type> \.\.\. \[in <group>\]/);
+  assert.match(result.stdout, /tree \[id\]/);
   assert.match(result.stdout, /^error: unknown command: unknown$/m);
   assert.doesNotMatch(result.stdout, /error: error:/);
   assert.doesNotMatch(result.stdout, /svg> /);
@@ -635,6 +636,82 @@ test('rejects invalid groups and duplicate IDs without changing the document', a
   );
 });
 
+test('tree recursively displays a group with multiple children', async () => {
+  const result = await runCli(
+    'init 800 600\n' +
+    'create g g1\n' +
+    'create rect r1 1 2 3 4\n' +
+    'create circle c1 5 6 7 in g1\n' +
+    'create text t1 8 9 "Hi" in g1\n' +
+    'tree\n' +
+    'exit\n',
+  );
+
+  assert.equal(result.code, 0);
+  const lines = withoutPrompt(result.stdout).split('\n');
+  const treeIndex = lines.indexOf('svg (800x600)');
+  assert.notEqual(treeIndex, -1);
+  assert.equal(lines[treeIndex + 1], '├── g#g1');
+  assert.equal(lines[treeIndex + 2], '│   ├── circle#c1 cx=5 cy=6 r=7');
+  assert.equal(lines[treeIndex + 3], '│   └── text#t1 (8,9) "Hi"');
+  assert.equal(lines[treeIndex + 4], '└── rect#r1 x=1 y=2 w=3 h=4');
+});
+
+test('tree recursively displays nested groups with branch guides', async () => {
+  const result = await runCli(
+    'init\n' +
+    'create g outer\n' +
+    'create rect top 0 0 1 1\n' +
+    'create g inner1 in outer\n' +
+    'create rect a 1 1 1 1 in inner1\n' +
+    'create circle b 2 2 2 in inner1\n' +
+    'create g inner2 in outer\n' +
+    'create text t 3 3 "T" in inner2\n' +
+    'tree\n' +
+    'exit\n',
+  );
+
+  assert.equal(result.code, 0);
+  const lines = withoutPrompt(result.stdout).split('\n');
+  const treeIndex = lines.indexOf('svg (800x600)');
+  assert.notEqual(treeIndex, -1);
+  assert.equal(lines[treeIndex + 1], '├── g#outer');
+  assert.equal(lines[treeIndex + 2], '│   ├── g#inner1');
+  assert.equal(lines[treeIndex + 3], '│   │   ├── rect#a x=1 y=1 w=1 h=1');
+  assert.equal(lines[treeIndex + 4], '│   │   └── circle#b cx=2 cy=2 r=2');
+  assert.equal(lines[treeIndex + 5], '│   └── g#inner2');
+  assert.equal(lines[treeIndex + 6], '│       └── text#t (3,3) "T"');
+  assert.equal(lines[treeIndex + 7], '└── rect#top x=0 y=0 w=1 h=1');
+});
+
+test('tree id shows a group subtree or a leaf and reports invalid requests', async () => {
+  const result = await runCli(
+    'init\n' +
+    'create g outer\n' +
+    'create g inner in outer\n' +
+    'create rect a 1 2 3 4 in inner\n' +
+    'create circle c 5 6 7 in inner\n' +
+    'tree outer\n' +
+    'tree a\n' +
+    'tree missing\n' +
+    'tree outer extra\n' +
+    'exit\n',
+  );
+
+  assert.equal(result.code, 0);
+  const lines = withoutPrompt(result.stdout).split('\n');
+
+  const outerIndex = lines.indexOf('g#outer');
+  assert.notEqual(outerIndex, -1);
+  assert.equal(lines[outerIndex + 1], '└── g#inner');
+  assert.equal(lines[outerIndex + 2], '    ├── rect#a x=1 y=2 w=3 h=4');
+  assert.equal(lines[outerIndex + 3], '    └── circle#c cx=5 cy=6 r=7');
+
+  assert.ok(lines.includes('rect#a x=1 y=2 w=3 h=4'));
+  assert.match(result.stdout, /error: no such shape: missing/);
+  assert.match(result.stdout, /error: usage: tree \[id\]/);
+});
+
 test('creates shapes in specified and nested groups with the in clause', async (t) => {
   const tempDir = createTempDir(t);
   const filePath = path.join(tempDir, 'nested.svg');
@@ -855,10 +932,11 @@ test('CommandParser parses init, tree, and save arguments', () => {
     { message: 'usage: init [w] [h]' },
   );
 
-  parser.parseTree([]);
+  assert.equal(parser.parseTree([]), undefined);
+  assert.equal(parser.parseTree(['g1']), 'g1');
   assert.throws(
-    () => parser.parseTree(['x']),
-    { message: 'usage: tree' },
+    () => parser.parseTree(['a', 'b']),
+    { message: 'usage: tree [id]' },
   );
 
   assert.equal(parser.parseSave(['a.svg']), 'a.svg');
