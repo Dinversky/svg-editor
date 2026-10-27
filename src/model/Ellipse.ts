@@ -1,10 +1,10 @@
 import { Shape } from './Shape.js';
 
 export class Ellipse extends Shape {
-  private readonly centerX: number;
-  private readonly centerY: number;
-  private readonly horizontalRadius: number;
-  private readonly verticalRadius: number;
+  private centerX: number;
+  private centerY: number;
+  private horizontalRadius: number;
+  private verticalRadius: number;
   private readonly shapeFill: string | undefined;
 
   public constructor(
@@ -50,6 +50,53 @@ export class Ellipse extends Shape {
 
   public get fill(): string | undefined {
     return this.shapeFill;
+  }
+
+  public translateBy(dx: number, dy: number): void {
+    this.centerX += dx;
+    this.centerY += dy;
+  }
+
+  public canTranslateBy(dx: number, dy: number): boolean {
+    return Number.isFinite(this.centerX + dx)
+      && Number.isFinite(this.centerY + dy);
+  }
+
+  public scaleBy(factor: number): void {
+    this.centerX *= factor;
+    this.centerY *= factor;
+    this.horizontalRadius *= factor;
+    this.verticalRadius *= factor;
+  }
+
+  public canScaleBy(factor: number): boolean {
+    const cx = this.centerX * factor;
+    const cy = this.centerY * factor;
+    const rx = this.horizontalRadius * factor;
+    const ry = this.verticalRadius * factor;
+
+    return Number.isFinite(cx)
+      && Number.isFinite(cy)
+      && Number.isFinite(rx) && rx > 0
+      && Number.isFinite(ry) && ry > 0;
+  }
+
+  public captureGeometry(): readonly number[] {
+    return [
+      this.centerX,
+      this.centerY,
+      this.horizontalRadius,
+      this.verticalRadius,
+    ];
+  }
+
+  public restoreGeometry(values: readonly number[]): void {
+    const [cx, cy, rx, ry] = values;
+
+    this.centerX = cx;
+    this.centerY = cy;
+    this.horizontalRadius = rx;
+    this.verticalRadius = ry;
   }
 
   public describe(): string {

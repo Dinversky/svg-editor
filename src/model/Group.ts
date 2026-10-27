@@ -39,6 +39,32 @@ export class Group extends Shape implements ShapeContainer {
     return this.childList.indexOf(shape);
   }
 
+  public translateBy(dx: number, dy: number): void {
+    for (const child of this.childList.children) {
+      child.translateBy(dx, dy);
+    }
+  }
+
+  public canTranslateBy(dx: number, dy: number): boolean {
+    return this.childList.children.every((child) => child.canTranslateBy(dx, dy));
+  }
+
+  public scaleBy(factor: number): void {
+    for (const child of this.childList.children) {
+      child.scaleBy(factor);
+    }
+  }
+
+  public canScaleBy(factor: number): boolean {
+    return this.childList.children.every((child) => child.canScaleBy(factor));
+  }
+
+  public captureGeometry(): readonly number[] {
+    return [];
+  }
+
+  public restoreGeometry(_values: readonly number[]): void { }
+
   public describe(): string {
     return `g#${this.id}`;
   }

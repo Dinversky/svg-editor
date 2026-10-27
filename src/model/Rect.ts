@@ -1,10 +1,10 @@
 import { Shape } from './Shape.js';
 
 export class Rect extends Shape {
-  private readonly positionX: number;
-  private readonly positionY: number;
-  private readonly shapeWidth: number;
-  private readonly shapeHeight: number;
+  private positionX: number;
+  private positionY: number;
+  private shapeWidth: number;
+  private shapeHeight: number;
   private readonly shapeFill: string | undefined;
 
   constructor(
@@ -50,6 +50,48 @@ export class Rect extends Shape {
 
   public get fill(): string | undefined {
     return this.shapeFill;
+  }
+
+  public translateBy(dx: number, dy: number): void {
+    this.positionX += dx;
+    this.positionY += dy;
+  }
+
+  public canTranslateBy(dx: number, dy: number): boolean {
+    return Number.isFinite(this.positionX + dx)
+      && Number.isFinite(this.positionY + dy);
+  }
+
+  public scaleBy(factor: number): void {
+    this.positionX *= factor;
+    this.positionY *= factor;
+    this.shapeWidth *= factor;
+    this.shapeHeight *= factor;
+  }
+
+  public canScaleBy(factor: number): boolean {
+    const x = this.positionX * factor;
+    const y = this.positionY * factor;
+    const width = this.shapeWidth * factor;
+    const height = this.shapeHeight * factor;
+
+    return Number.isFinite(x)
+      && Number.isFinite(y)
+      && Number.isFinite(width) && width > 0
+      && Number.isFinite(height) && height > 0;
+  }
+
+  public captureGeometry(): readonly number[] {
+    return [this.positionX, this.positionY, this.shapeWidth, this.shapeHeight];
+  }
+
+  public restoreGeometry(values: readonly number[]): void {
+    const [x, y, width, height] = values;
+
+    this.positionX = x;
+    this.positionY = y;
+    this.shapeWidth = width;
+    this.shapeHeight = height;
   }
 
   public describe(): string {

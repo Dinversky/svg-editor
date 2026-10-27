@@ -1,8 +1,8 @@
 import { Shape } from './Shape.js';
 
 export class Text extends Shape {
-  private readonly positionX: number;
-  private readonly positionY: number;
+  private positionX: number;
+  private positionY: number;
   private readonly textContent: string;
 
   public constructor(id: string, x: number, y: number, content: string) {
@@ -27,6 +27,37 @@ export class Text extends Shape {
 
   public get content(): string {
     return this.textContent;
+  }
+
+  public translateBy(dx: number, dy: number): void {
+    this.positionX += dx;
+    this.positionY += dy;
+  }
+
+  public canTranslateBy(dx: number, dy: number): boolean {
+    return Number.isFinite(this.positionX + dx)
+      && Number.isFinite(this.positionY + dy);
+  }
+
+  public scaleBy(factor: number): void {
+    this.positionX *= factor;
+    this.positionY *= factor;
+  }
+
+  public canScaleBy(factor: number): boolean {
+    return Number.isFinite(this.positionX * factor)
+      && Number.isFinite(this.positionY * factor);
+  }
+
+  public captureGeometry(): readonly number[] {
+    return [this.positionX, this.positionY];
+  }
+
+  public restoreGeometry(values: readonly number[]): void {
+    const [x, y] = values;
+
+    this.positionX = x;
+    this.positionY = y;
   }
 
   public describe(): string {

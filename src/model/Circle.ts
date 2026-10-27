@@ -1,9 +1,9 @@
 import { Shape } from './Shape.js';
 
 export class Circle extends Shape {
-  private readonly centerX: number;
-  private readonly centerY: number;
-  private readonly shapeRadius: number;
+  private centerX: number;
+  private centerY: number;
+  private shapeRadius: number;
   private readonly shapeFill: string | undefined;
 
   public constructor(
@@ -43,6 +43,44 @@ export class Circle extends Shape {
 
   public get fill(): string | undefined {
     return this.shapeFill;
+  }
+
+  public translateBy(dx: number, dy: number): void {
+    this.centerX += dx;
+    this.centerY += dy;
+  }
+
+  public canTranslateBy(dx: number, dy: number): boolean {
+    return Number.isFinite(this.centerX + dx)
+      && Number.isFinite(this.centerY + dy);
+  }
+
+  public scaleBy(factor: number): void {
+    this.centerX *= factor;
+    this.centerY *= factor;
+    this.shapeRadius *= factor;
+  }
+
+  public canScaleBy(factor: number): boolean {
+    const cx = this.centerX * factor;
+    const cy = this.centerY * factor;
+    const radius = this.shapeRadius * factor;
+
+    return Number.isFinite(cx)
+      && Number.isFinite(cy)
+      && Number.isFinite(radius) && radius > 0;
+  }
+
+  public captureGeometry(): readonly number[] {
+    return [this.centerX, this.centerY, this.shapeRadius];
+  }
+
+  public restoreGeometry(values: readonly number[]): void {
+    const [cx, cy, radius] = values;
+
+    this.centerX = cx;
+    this.centerY = cy;
+    this.shapeRadius = radius;
   }
 
   public describe(): string {

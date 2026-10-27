@@ -1,10 +1,10 @@
 import { Shape } from './Shape.js';
 
 export class Line extends Shape {
-  private readonly startX: number;
-  private readonly startY: number;
-  private readonly endX: number;
-  private readonly endY: number;
+  private startX: number;
+  private startY: number;
+  private endX: number;
+  private endY: number;
   private readonly shapeStroke: string | undefined;
 
   public constructor(
@@ -51,6 +51,47 @@ export class Line extends Shape {
 
   public get stroke(): string | undefined {
     return this.shapeStroke;
+  }
+
+  public translateBy(dx: number, dy: number): void {
+    this.startX += dx;
+    this.startY += dy;
+    this.endX += dx;
+    this.endY += dy;
+  }
+
+  public canTranslateBy(dx: number, dy: number): boolean {
+    return Number.isFinite(this.startX + dx)
+      && Number.isFinite(this.startY + dy)
+      && Number.isFinite(this.endX + dx)
+      && Number.isFinite(this.endY + dy);
+  }
+
+  public scaleBy(factor: number): void {
+    this.startX *= factor;
+    this.startY *= factor;
+    this.endX *= factor;
+    this.endY *= factor;
+  }
+
+  public canScaleBy(factor: number): boolean {
+    return Number.isFinite(this.startX * factor)
+      && Number.isFinite(this.startY * factor)
+      && Number.isFinite(this.endX * factor)
+      && Number.isFinite(this.endY * factor);
+  }
+
+  public captureGeometry(): readonly number[] {
+    return [this.startX, this.startY, this.endX, this.endY];
+  }
+
+  public restoreGeometry(values: readonly number[]): void {
+    const [x1, y1, x2, y2] = values;
+
+    this.startX = x1;
+    this.startY = y1;
+    this.endX = x2;
+    this.endY = y2;
   }
 
   public describe(): string {

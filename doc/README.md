@@ -7,11 +7,11 @@
 | 模块              | 职责                                            | 当前状态                   |
 | --------------- | --------------------------------------------- | ---------------------- |
 | `src/cli/`      | 读取输入、独立词法解析、命令参数解析（`CommandParser`）、命令分派并输出结果，递归格式化 tree、格式化 show。 | 已实现（含颜色校验、子树查询与属性明细） |
-| `src/model/`    | 文档、根容器、Group 容器、子节点管理、全局 ID 索引、多态图形与注册表式图形工厂；Stage 4-A 增加受控插入/索引/移动 API。 | 已实现 Stage 3-G、4-A 模型编辑基础 |
-| `src/commands/` | Command 接口、命令工厂注册表、统一执行入口（`CommandExecutor`）与 undo/redo 历史（`History`）；具体编辑命令后续实现。    | 基础层已实现（Stage 2-D、4-A），具体命令未实现 |
+| `src/model/`    | 文档、根容器、Group 容器、子节点管理、全局 ID 索引、多态图形与注册表式图形工厂；Stage 4-A/4-B 增加受控结构编辑与几何更新 API。 | 已实现 Stage 3-G、4-A/4-B 模型编辑基础 |
+| `src/commands/` | Command 接口、命令工厂注册表、统一执行入口（`CommandExecutor`）、undo/redo 历史（`History`）以及 `MoveCommand`/`ScaleCommand`；CLI 接入与其余编辑命令后续实现。    | 基础层与 move/scale 命令已实现，CLI 未接入 |
 | `src/io/`       | SVG 序列化与文件写入。                                 | 已实现 save 子集            |
 | `src/errors/`   | 共享的 `EditorError` 类型，承载可直接展示的错误消息。            | 已实现 Stage 2-E          |
-| `test/`         | 自动化 CLI、Tokenizer、模型、命令注册表、命令历史与模型编辑 API 测试。     | 已实现                    |
+| `test/`         | 自动化 CLI、Tokenizer、模型、命令注册表、命令历史、模型编辑 API 与几何命令测试。     | 已实现                    |
 
 当前实现的类：
 
@@ -20,13 +20,13 @@
 - `ShapeContainer`：容器接口，约定只读子节点、父容器、容器描述标签、添加、按索引插入、移除、包含查询和索引查询。
 - `ChildShapeList`：可复用的子节点管理实现，统一维护子节点顺序、父节点关系和 ID 注册/注销；`add` 在末尾插入，`insert` 在指定索引插入并校验索引边界、重复挂载、重复 ID、自包含和祖先循环；由 `RootContainer` 和 `Group` 共同使用。
 - `RootContainer`：实现 `ShapeContainer`，代表文档根容器；它不是一种 `Shape`，不继承图形基类，`parent` 固定为 `null`，`describe()` 返回 `svg`。
-- `Group`：继承 `Shape` 并实现 `ShapeContainer`，复用 `ChildShapeList` 管理子节点；`asContainer()` 返回自身，自身负责 `g#id` 描述和递归 `<g>` SVG 序列化。
-- `Shape`：抽象图形基类，封装非空 ID、父容器引用、`asContainer()`、`describe()`、`toSvgElement()`、SVG 属性转义和 XML 文本内容转义；普通叶形默认不是容器。
-- `Rect`：继承 `Shape`，用私有字段保存坐标、宽高和可选 fill，构造时校验几何；自身负责 tree 描述和 `<rect>` 元素生成。
-- `Circle`：继承 `Shape`，用私有字段保存圆心、半径和可选 fill，构造时校验圆心为有限数值且半径为正；自身负责 tree 描述和 `<circle>` 元素生成。
-- `Ellipse`：继承 `Shape`，用私有字段保存圆心、水平/垂直半径和可选 fill，构造时校验圆心为有限数值且两个半径为正；自身负责 tree 描述和 `<ellipse>` 元素生成。
-- `Line`：继承 `Shape`，用私有字段保存起止点和可选 stroke，构造时校验所有端点为有限数值；tree 使用作业约定的 `(x1,y1) -> (x2,y2)` 格式，自身负责 `<line>` 元素生成。
-- `Text`：继承 `Shape`，用私有字段保存位置和文本内容，构造时校验坐标为有限数值；tree 使用 `(x,y) "content"` 格式，SVG 文本内容按 XML 规则转义，属性值使用属性转义。
+- `Group`：继承 `Shape` 并实现 `ShapeContainer`，复用 `ChildShapeList` 管理子节点；`asContainer()` 返回自身，自身负责 `g#id` 描述和递归 `<g>` SVG 序列化；`translateBy`/`scaleBy` 递归到每个子孙，几何快照为空数组。
+- `Shape`：抽象图形基类，封装非空 ID、父容器引用、`asContainer()`、`describe()`、`toSvgElement()`、SVG 属性转义和 XML 文本内容转义；Stage 4-B 增加多态几何 API `translateBy`/`canTranslateBy`、`scaleBy`/`canScaleBy`、`captureGeometry`、`restoreGeometry`，普通叶形默认不是容器。
+- `Rect`：继承 `Shape`，用私有字段保存坐标、宽高和可选 fill，构造时校验几何；通过几何 API 平移/缩放 `x`、`y`、`width`、`height`，自身负责 tree 描述和 `<rect>` 元素生成。
+- `Circle`：继承 `Shape`，用私有字段保存圆心、半径和可选 fill，构造时校验圆心为有限数值且半径为正；通过几何 API 平移/缩放 `cx`、`cy`、`r`，自身负责 tree 描述和 `<circle>` 元素生成。
+- `Ellipse`：继承 `Shape`，用私有字段保存圆心、水平/垂直半径和可选 fill，构造时校验圆心为有限数值且两个半径为正；通过几何 API 平移/缩放 `cx`、`cy`、`rx`、`ry`，自身负责 tree 描述和 `<ellipse>` 元素生成。
+- `Line`：继承 `Shape`，用私有字段保存起止点和可选 stroke，构造时校验所有端点为有限数值；通过几何 API 平移/缩放四个端点，tree 使用作业约定的 `(x1,y1) -> (x2,y2)` 格式，自身负责 `<line>` 元素生成。
+- `Text`：继承 `Shape`，用私有字段保存位置和文本内容，构造时校验坐标为有限数值；通过几何 API 平移/缩放 `x`、`y`，不改变文本内容；tree 使用 `(x,y) "content"` 格式，SVG 文本内容按 XML 规则转义，属性值使用属性转义。
 - `ShapeFactory`：以类型名为键的注册表式工厂，内置注册 `rect`、`circle`、`ellipse`、`line`、`text` 和 `g`；通过 `register`、`has`、`create(type, creation)`、`types()` 统一创建图形，`g` 创建参数携带文档 registry。
 - `SvgEditorCli`：只承担命令协调。持有当前 `Document`，用 `readline` 逐行读取，先交给 `Tokenizer` 生成 token，再按命令名分派 `init`、`create`、`tree`、`show`、`save`、`help`、`exit`；各命令的参数解析全部委托 `CommandParser`，自身负责文档检查、重复 ID 检查、容器选择、经 `ShapeFactory` 创建图形并输出结果；`tree` 带 ID 时查找目标节点并报 `no such shape`，再调用 `TreeFormatter` 的子树格式化；`show` 查找目标节点并调用 `ShowFormatter`；`handleLine` 是统一错误边界，捕获 Tokenizer、CommandParser 和命令异常后输出单行 `error: ...`；启动时输出固定单行 banner，仅在 TTY 交互模式输出 `svg> ` 提示符。
 - `CommandParser`：命令参数解析层。`parseInit`/`parseCreate`/`parseTree`/`parseShow`/`parseSave` 把 token 数组转换为结构化结果（`ParsedCreate` 携带图形类型、id、`ShapeCreation` 和可选 `containerId`；`parseTree` 返回可选节点 ID；`parseShow` 返回唯一节点 ID）；`create` 的类型识别、参数个数/数值/正数校验、`in <containerId>` 尾缀拆分和 fill/stroke 颜色语法校验都集中在此；颜色接受 SVG 命名关键字（大小写不敏感）与 3/6 位十六进制，非法时报 `invalid color for <field>: <value>`；解析错误抛出 `EditorError`，不访问文档、不构造图形、不输出日志。
@@ -36,6 +36,9 @@
 - `CommandRegistry`：以命令名为键保存 `CommandFactory`，提供注册、查询、创建和名称列表；不执行命令，也不依赖模型或 I/O。
 - `CommandExecutor`：统一执行入口（Invoker），构造时注入 `History`；`execute(command)` 先调用 `command.execute()`，仅成功后把同一个命令对象交给 `History` 记录；执行失败时异常向上传播，不进入历史，也不清空 redo 栈。
 - `History`：管理 undo/redo 两个 `Command` 栈，不执行具体业务，也不读写模型快照。`record` 把成功命令压入 undo 栈并清空 redo 栈；`undo` 调用栈顶命令的 `undo()`，成功后把同一个对象移入 redo 栈；`redo` 复用同一对象再次调用 `execute()`，成功后移回 undo 栈；空栈返回 `false`，命令抛错时两个栈保持不变。
+- `GeometryCommand`：几何编辑命令抽象基类，实现 `Command`；首次 `execute()` 先调用子类 `validate()` 检查全部新几何值，再递归捕获目标子树快照并调用 `apply()`；`undo()` 逐节点调用 `restoreGeometry` 精确恢复；redo 复用已有快照，不重新捕获。
+- `MoveCommand`：继承 `GeometryCommand`，接收目标图形和 `dx`/`dy`；构造时拒绝非有限增量，执行前通过 `canTranslateBy` 检查整个目标子树的平移结果，失败报 `move would produce invalid geometry`；`apply()` 调用目标的 `translateBy`，容器由模型递归到子孙。
+- `ScaleCommand`：继承 `GeometryCommand`，接收目标图形和正因子；构造时拒绝非有限或非正因子并抛出 `scale factor must be positive`，执行前通过 `canScaleBy` 检查所有缩放结果有限且尺寸为正，失败报 `scale would produce invalid geometry`；`apply()` 调用目标的 `scaleBy`；只缩放几何，不改变 `stroke-width`、`font-size` 或 fill/stroke 颜色。
 - `SvgSerializer`：读取 `Document` 的尺寸和根容器内容，通过 `Shape.toSvgElement()` 生成 SVG 文本，不接触文件，也不读取图形专属属性。
 - `SvgFileWriter`：只负责把文本写入指定路径。
 - `TreeFormatter`：读取 `Document` 的尺寸和根容器内容，通过 `Shape.describe()` 递归生成稳定 tree 文本；`format(document)` 输出完整树，`formatSubtree(shape)` 以目标节点自身为根输出子树；通过 `Shape.asContainer()` 递归子节点，不使用具体图形类型判断；空文档输出 `(empty)`。
@@ -47,18 +50,19 @@
 
 - `cli` 可以依赖 `model`、`io` 和 `errors`。
 - `io` 可以依赖 `model`。
+- `commands` 可以依赖 `model`；当前 `GeometryCommand` 以类型方式引用 `Shape`，`MoveCommand`/`ScaleCommand` 通过模型的几何 API 修改状态。
 - `model` 不依赖 `cli`、`io`、`errors` 或具体命令类。
 - `errors` 不依赖任何项目模块。
 - `model` 内部：`Document` 组合 `ShapeRegistry`、`ShapeFactory` 和 `RootContainer`，并使用 `Shape`/`ShapeContainer`；`Document.createGroup()` 通过工厂的 `g` 创建器注入同一 registry 的 `Group`，`countShapes()` 通过 `Shape.asContainer()` 递归统计，`moveShape()` 通过 `ShapeContainer.insert/indexOf/remove` 完成受控重排和移动；`RootContainer` 和 `Group` 都组合 `ChildShapeList`；`ChildShapeList` 使用 `ShapeRegistry`、`Shape` 和 `ShapeContainer`；`Shape` 以类型方式引用 `ShapeContainer` 作为父节点类型，并提供默认返回 `null` 的 `asContainer()`；`Group` 继承 `Shape`、实现 `ShapeContainer` 并覆盖 `asContainer()`；`Rect`、`Circle`、`Ellipse`、`Line`、`Text` 继承 `Shape`；`ShapeFactory` 注册并创建全部六种类型，`g` 的创建参数包含 registry。
 - `cli` 内部：`SvgEditorCli` 依赖 `Tokenizer`、`CommandParser`、`TreeFormatter`、`ShowFormatter`、`ShapeFactory`、`Shape`/`ShapeContainer` 类型、`SvgSerializer`、`SvgFileWriter` 和 `EditorError`；`CommandParser` 依赖 `EditorError`，并以类型方式引用 `ShapeCreation`（model），不访问 `Document`、不构造图形；`Tokenizer` 依赖 `EditorError`，不依赖模型、I/O 或其他 CLI 类。
-- `commands` 内部：`CommandRegistry` 只依赖同层 `Command` 类型；`CommandExecutor` 依赖 `Command` 类型和同层 `History`；`History` 只依赖 `Command` 类型并保存命令对象，不依赖模型、CLI 或 I/O；三者均不导入 `Document` 或具体图形。
+- `commands` 内部：`CommandRegistry` 只依赖同层 `Command` 类型；`CommandExecutor` 依赖 `Command` 类型和同层 `History`；`History` 只依赖 `Command` 类型并保存命令对象；`GeometryCommand` 以类型方式依赖 `Shape` 并负责目标子树快照，`MoveCommand`/`ScaleCommand` 继承 `GeometryCommand` 并调用 `translateBy`/`scaleBy`；commands 层不依赖 CLI 或 I/O。
 - `cli` 尚未依赖 `commands`；现有 `switch` 分派保持不变，commands 接入计划在 4-G。
-- `test` 通过子进程调用编译后的 CLI，并直接加载编译后的 `Tokenizer`、`CommandParser`、`Document`、`Rect`、`Circle`、`Ellipse`、`Line`、`Text`、`ShapeFactory`、`ShapeRegistry`、`SvgSerializer`、`CommandRegistry`、`CommandExecutor`、`History` 验证词法、命令解析、模型、工厂、注册表、执行器、历史和模型编辑 API 行为。
+- `test` 通过子进程调用编译后的 CLI，并直接加载编译后的 `Tokenizer`、`CommandParser`、`Document`、`Rect`、`Circle`、`Ellipse`、`Line`、`Text`、`ShapeFactory`、`ShapeRegistry`、`SvgSerializer`、`CommandRegistry`、`CommandExecutor`、`History`、`MoveCommand`、`ScaleCommand` 验证词法、命令解析、模型、工厂、注册表、执行器、历史、几何命令和模型编辑 API 行为。
 
 规划中的依赖：
 
-- 后续具体编辑命令可以依赖 `model`；`cli` 可以在具体命令实现后依赖 `commands` 进行编辑操作。
-- 4-A 已建立 `CommandExecutor` 与 `History` 基础，但尚未创建具体编辑命令，也未把 CLI 接入 commands 层。
+- `cli` 可以在具体命令接入后依赖 `commands` 进行编辑操作（计划 4-G）。
+- 4-A/4-B 已建立执行器、历史和 move/scale 命令；其余具体编辑命令尚未创建。
 
 ### PlantUML 包图
 
@@ -79,7 +83,8 @@ test ..> cli
 test ..> model
 test ..> commands
 cli ..> commands : planned (4-G integration)
-commands ..> model : planned (concrete edit commands)
+commands --> model : move/scale commands
+commands ..> model : planned (other edit commands)
 @enduml
 ```
 
@@ -165,10 +170,18 @@ interface Command
 class CommandRegistry
 class CommandExecutor
 class History
+abstract class GeometryCommand
+class MoveCommand
+class ScaleCommand
+class Shape
 CommandRegistry ..> Command : creates via CommandFactory
 CommandExecutor --> Command : executes
 CommandExecutor --> History : records after success
 History --> Command : stores same objects for undo/redo
+GeometryCommand ..|> Command
+MoveCommand --|> GeometryCommand
+ScaleCommand --|> GeometryCommand
+GeometryCommand --> Shape : target geometry and snapshot
 @enduml
 ```
 
@@ -192,11 +205,14 @@ History --> Command : stores same objects for undo/redo
 - Stage 4-A 校准 Command 模式：`Command` 是命令接口；`CommandRegistry` 只按名称创建命令；`CommandExecutor` 是统一执行入口（Invoker）；具体编辑命令（4-B 起）封装操作并调用作为 Receiver 的模型对象；`Document`/`Shape`/`Group` 持有业务状态。`History` 是本项目为 undo/redo 增加的栈管理组件，不属于基础 Command 模式的必需角色，也不保存文档快照。
 - Stage 4-A 新增 `CommandExecutor` 与 `History`：执行器先调用 `command.execute()`，仅成功后记录到历史；`History` 的 undo/redo 栈保存 `Command` 对象，undo/redo 成功后把同一个对象从一个栈转移到另一个栈；新命令成功后清空 redo 栈；空栈返回 `false`，命令抛错时两个栈保持不变。作业原文未规定空栈的用户可见文案，本阶段只确定基础层行为，CLI 文案留到 4-G 接入时再决定并记录。
 - Stage 4-A 增加受控模型编辑 API：`ChildShapeList` 新增 `insert(shape, index)` 和 `indexOf(shape)`，`ShapeContainer`、`RootContainer`、`Group` 同步暴露；`Document.moveShape(shape, target, index)` 支持同容器最终位置重排和跨容器插入，校验索引、重复 ID、重复挂载、自包含和祖先循环，并在失败时回滚到原容器原位置。具体图形的属性写 API 未在本阶段定义，避免在 `move`/`scale`/`set` 语义确认前发明接口；4-B/4-C 再按图形属性表补充。
-- `AGENTS.md` 要求 Command、Composite 和 undo/redo；当前已实现 Command 接口/注册表、`CommandExecutor`/`History` 基础以及 Group 容器结构，但具体编辑命令、Composite 统一操作和 CLI 的 undo/redo 命令仍未实现，因此仍是阶段性缺失，不是最终架构。
-- `SvgEditorCli.execute` 目前仍是唯一的命令名分派点；`CommandRegistry`、`CommandExecutor` 和 `History` 存在但尚未接入 CLI（计划 4-G）。后续实现具体命令时再把注册表接入分派流程，并把编辑操作封装成 undo 单元。
-- 图形类型、命令集合、SVG 格式是主要变化点；`Shape` 为新增图形提供统一多态接口，`Circle`、`Ellipse`、`Line` 和 `Text` 验证了该扩展路径；`ShapeFactory` 已用注册表集中类型到创建器的映射，新增图形不再扩展类型分支；`Shape.asContainer()` 让容器识别和计数保持多态，`ShapeContainer`/`ChildShapeList` 由 `RootContainer` 和 `Group` 复用，`CommandRegistry` 为具体命令注册预留入口，`CommandExecutor`/`History` 为执行与撤销提供统一入口和栈管理，`Document.insert`/`moveShape` 为结构编辑提供受控 API。本阶段不提前创建具体命令类或插件类。
+- Stage 4-B `scale` 规则（用户确认）：按作业“factor 同乘到全部几何属性（位置与尺寸）”执行，只缩放几何；`stroke-width`、`font-size`、fill/stroke 颜色和 text 内容不变。`font-size` 当前不在 create/set 白名单，本阶段不新增；不引入 SVG `transform`，直接修改模型几何值。
+- Stage 4-B 模型几何 API：`Shape` 增加 `translateBy`/`canTranslateBy`、`scaleBy`/`canScaleBy`、`captureGeometry`、`restoreGeometry`；五种叶形按自身字段实现，Rect 的 `x/y/width/height`、Circle 的 `cx/cy/r`、Ellipse 的 `cx/cy/rx/ry`、Line 的四个端点、Text 的 `x/y`，其中 Text 内容与各图形样式不变；`Group` 把检查和操作递归到每个子孙且只应用一次，自身几何快照为空。
+- Stage 4-B 命令：新增 `GeometryCommand`（首次 execute 先验证再由 `canTranslateBy`/`canScaleBy` 后的快照递归捕获目标子树原几何，undo 逐节点恢复，redo 复用同一快照）、`MoveCommand`（校验有限 `dx`/`dy` 和平移结果）和 `ScaleCommand`（校验有限正因子和缩放结果，非正因子错误为 `scale factor must be positive`）。所有已实现叶形和 Group 都支持；根 `svg` 不是 `Shape`，不能被命令直接作为目标；ID 解析与 `no such shape` 属于 4-G。
+- `AGENTS.md` 要求 Command、Composite 和 undo/redo；当前已实现 Command 接口/注册表、`CommandExecutor`/`History`、`MoveCommand`/`ScaleCommand` 以及 Group 容器与递归几何操作，但其余具体编辑命令、Composite 编辑命令和 CLI 的 undo/redo 命令仍未实现，因此仍是阶段性缺失，不是最终架构。
+- `SvgEditorCli.execute` 目前仍是唯一的命令名分派点；`CommandRegistry`、`CommandExecutor`、`History`、`MoveCommand` 和 `ScaleCommand` 存在但尚未接入 CLI（计划 4-G）。后续实现具体命令时再把注册表接入分派流程，并把编辑操作封装成 undo 单元。
+- 图形类型、命令集合、SVG 格式是主要变化点；`Shape` 为新增图形提供统一多态接口和几何 API，`Circle`、`Ellipse`、`Line` 和 `Text` 验证了该扩展路径；`ShapeFactory` 已用注册表集中类型到创建器的映射，新增图形不再扩展类型分支；`Shape.asContainer()` 让容器识别和计数保持多态，`ShapeContainer`/`ChildShapeList` 由 `RootContainer` 和 `Group` 复用，`CommandRegistry` 为具体命令注册预留入口，`CommandExecutor`/`History` 为执行与撤销提供统一入口和栈管理，`Document.insert`/`moveShape` 为结构编辑提供受控 API。本阶段不提前创建其余具体命令类或插件类。
 
-### 快照与撤销约定（Stage 4-A）
+### 快照与撤销约定（Stage 4-A/4-B）
 
 - 不对整个 `Document` 做默认深拷贝；`History` 只保存命令对象，不解析或保存快照内容。
 - 具体命令在首次 `execute()` 时捕获撤销所需的最小旧状态；redo 复用同一命令对象，不得覆盖 undo 所需信息。若某类命令需要在重做时更新部分状态，必须说明原因并证明连续 execute/undo/redo 往返正确。
@@ -205,14 +221,15 @@ History --> Command : stores same objects for undo/redo
 
   | 命令 | 撤销所需状态 |
   | --- | --- |
-  | `move`/`scale` | 所有受影响图形的原几何值 |
+  | `move`/`scale`（已实现） | 所有受影响图形（含 Group 子孙）的原几何值 |
   | `set` | 被修改属性的旧值 |
   | `delete` | 被删除节点或子树的对象引用、原父容器、原索引及子树 ID |
   | `group`/`ungroup` | 相关对象、原父容器、原索引、新 Group ID 和子节点顺序 |
   | `addto`/`front`/`back` | 原父容器、原索引、目标容器和目标索引 |
 
+- `move`/`scale` 已按该约定实现：`GeometryCommand` 首次 execute 时通过 `Shape.asContainer()` 递归捕获目标节点及其子孙的几何数组，undo 逐节点调用 `restoreGeometry` 精确恢复；快照在 redo 时不会被覆盖。
 - 失败约定：命令必须在首次修改模型前完成全部可预见校验；`CommandExecutor` 只在 execute 成功后记录，`History` 只在 undo/redo 成功后转移栈项。若命令在修改后抛错，命令自身必须通过预校验或可靠回滚保证文档和历史不被部分污染。
-- 4-A 的测试用测试替身命令验证属性旧值精确恢复、节点顺序、父子关系、ID 查询和连续 undo/redo；生产图形的属性写 API 与具体命令将在 4-B/4-C 中补充。
+- 4-A 的测试用测试替身验证通用快照与历史行为；4-B 已用真实叶形和 Group 验证 move/scale 的几何快照、连续 undo/redo 和失败原子性。
 
 ## 过程记录
 
@@ -446,10 +463,20 @@ History --> Command : stores same objects for undo/redo
 - README 决策：根 README 原先声明“没有命令历史”，4-A 新增 `CommandExecutor` 与 `History` 后该表述会失真，且 `src/commands/` 目录职责发生变化，因此做最小更新；CLI 命令、构建流程和用户可见行为未变，其他章节不改。
 - `项目规划.md` 同步：更新当前基线（`c5b316e`、3-J 已提交、4-A 本地未提交、102/102），标记 4-A 完成并把下一项标为 4-B。
 
+- Task 4-B 开始前检查：分支 `main`，HEAD `0ff2da9`（`feat: 实现命令执行器与历史管理基础架构`，Task 4-A 已提交），`origin/main` 为 `c5b316e`，本地领先 1 个提交；工作区干净；102 个测试作为回归基线。Node.js v22.22.2，npm 10.9.7。
+- Task 4-B 作业核对：作业定义 `move <id> <dx> <dy>` 为增量平移，容器整体平移；`scale <id> <factor>` 为等比缩放，factor 同乘到图形的全部几何属性（位置与尺寸），容器递归到每个子孙；非正因子报 `scale factor must be positive`。作业未规定 scale 成功反馈和 move 非法增量的专用文案。用户已确认 scale 仅缩放几何：`stroke-width`、`font-size`、fill/stroke 颜色和 text 内容不变；`font-size` 当前不在 create/set 白名单，本阶段不新增。
+- Task 4-B 设计决策：`Shape` 增加多态 `translateBy`/`canTranslateBy`、`scaleBy`/`canScaleBy`、`captureGeometry`/`restoreGeometry`；五种叶形自行更新几何字段，`Group` 将检查、平移和缩放递归到每个子孙且只应用一次，Group 自身几何快照为空。`GeometryCommand` 在首次 execute 时先调用子类 `validate()`，再递归捕获目标子树原几何并 `apply()`；undo 逐节点恢复，redo 复用同一快照。`MoveCommand` 构造时拒绝非有限 `dx`/`dy`，执行前拒绝会产生非有限结果的平移；`ScaleCommand` 构造时拒绝非有限或非正 factor，执行前拒绝非有限或非正结果。错误文案为 `move deltas must be finite numbers`、`move would produce invalid geometry`、`scale factor must be positive`、`scale would produce invalid geometry`。
+- Task 4-B 目标范围：所有已实现叶形和 Group 都支持 move/scale；根 `svg` 不是 `Shape`，不能被命令直接作为目标；作业未定义其他“不支持的目标”，ID 解析和 `no such shape` 属于 4-G。命令不读取终端、不打印成功消息。
+- Task 4-B 实现：新增 `src/commands/GeometryCommand.ts`、`MoveCommand.ts`、`ScaleCommand.ts` 和 `test/geometry-commands.test.mjs`；修改 `src/model/Shape.ts`、`Rect.ts`、`Circle.ts`、`Ellipse.ts`、`Line.ts`、`Text.ts`、`Group.ts` 与 `package.json` 测试列表。CLI、`CommandRegistry`、`History`/`CommandExecutor` 和 SVG 序列化未修改。
+- Task 4-B 验证：`npm run typecheck` 通过；针对性测试 `node --test test/geometry-commands.test.mjs` 为 14/14 通过；`npm test` 为 116/116 通过（CLI 65 + CommandRegistry 8 + GeometryCommands 14 + History 10 + ModelEditing 7 + Tokenizer 12）；`git diff --check` 无空白错误（仅 LF/CRLF 提示）。本任务没有用户可见 CLI 变化，未手工运行 CLI 或浏览器验收。
+- Task 4-B 已知限制：`MoveCommand`/`ScaleCommand` 尚未接入 CLI，`move`/`scale` 命令不可用，成功反馈和 ID 解析留到 4-G；scale 只缩放几何，文本字体大小和描边宽度保持不变是用户确认的规则；命令层使用普通 `Error` 携带消息，尚未改为 `EditorError`；极端运算结果会在执行前被拒绝，错误文案为内部暂定，4-G 可再对齐作业输出约定。
+- README 决策：根 README 原先声明“没有具体编辑命令”，4-B 新增 `MoveCommand`/`ScaleCommand` 后该表述会失真，且 `src/commands/` 职责扩展，因此做最小更新；CLI 命令、构建流程和用户可见行为未变。
+- `项目规划.md` 同步：更新当前基线（`0ff2da9`、4-A 已提交、4-B 本地未提交、116/116），标记 4-B 完成并把下一项标为 4-C。
+
 ## 一致性自查
 
-- 模块划分：实际目录为 `src/cli/`（`main.ts`、`SvgEditorCli.ts`、`CommandParser.ts`、`Tokenizer.ts`、`TreeFormatter.ts`、`ShowFormatter.ts`）、`src/model/`（`Shape.ts`、`Rect.ts`、`Circle.ts`、`Ellipse.ts`、`Line.ts`、`Text.ts`、`Group.ts`、`Document.ts`、`ShapeRegistry.ts`、`ShapeContainer.ts`、`ChildShapeList.ts`、`RootContainer.ts`、`ShapeFactory.ts`）、`src/commands/`（`Command.ts`、`CommandRegistry.ts`、`CommandExecutor.ts`、`History.ts`）、`src/io/`（`SvgSerializer.ts`、`SvgFileWriter.ts`）、`src/errors/`（`EditorError.ts`）、`test/cli.test.mjs`、`test/tokenizer.test.mjs`、`test/command-registry.test.mjs`、`test/model-editing.test.mjs`、`test/history.test.mjs`；`Canvas.ts` 已删除。
-- 依赖方向：`SvgEditorCli` 导入 `Document`、`ShapeFactory`、`Shape`/`ShapeContainer` 类型、`Tokenizer`、`CommandParser`、`TreeFormatter`、`ShowFormatter`、`io` 和 `EditorError`；`CommandParser` 只导入 `EditorError` 并以类型方式引用 `ShapeCreation`，不访问 Document、不构造图形；`Tokenizer` 只导入 `EditorError`，不依赖模型或 I/O；`EditorError` 没有项目内导入；`TreeFormatter`/`ShowFormatter`/`SvgSerializer` 导入 `Document`/`Shape` 并只调用 `describe()`/`toSvgElement()`/`asContainer()`；`Document` 组合 `ShapeRegistry`、`ShapeFactory` 和 `RootContainer`，通过工厂的 `g` 创建器注入同一 registry，通过 `Shape.asContainer()` 递归统计，并通过 `ShapeContainer.insert/indexOf/remove` 实现 `moveShape()`；`RootContainer` 和 `Group` 组合 `ChildShapeList`；`ChildShapeList` 使用 `ShapeRegistry`、`Shape` 和 `ShapeContainer`；`Shape` 以类型方式引用 `ShapeContainer` 并提供默认 `asContainer()`；`Group` 继承 `Shape`、实现 `ShapeContainer` 并覆盖 `asContainer()`；`Rect`、`Circle`、`Ellipse`、`Line`、`Text` 继承 `Shape`；`ShapeFactory` 注册并创建全部六种类型；`CommandRegistry` 只以类型方式引用同层 `Command`；`CommandExecutor` 以类型方式依赖 `Command` 和同层 `History`；`History` 只以类型方式依赖 `Command`；commands 层未导入 CLI、模型或 I/O。未发现 `model → cli/io/errors` 的依赖。
+- 模块划分：实际目录为 `src/cli/`（`main.ts`、`SvgEditorCli.ts`、`CommandParser.ts`、`Tokenizer.ts`、`TreeFormatter.ts`、`ShowFormatter.ts`）、`src/model/`（`Shape.ts`、`Rect.ts`、`Circle.ts`、`Ellipse.ts`、`Line.ts`、`Text.ts`、`Group.ts`、`Document.ts`、`ShapeRegistry.ts`、`ShapeContainer.ts`、`ChildShapeList.ts`、`RootContainer.ts`、`ShapeFactory.ts`）、`src/commands/`（`Command.ts`、`CommandRegistry.ts`、`CommandExecutor.ts`、`History.ts`、`GeometryCommand.ts`、`MoveCommand.ts`、`ScaleCommand.ts`）、`src/io/`（`SvgSerializer.ts`、`SvgFileWriter.ts`）、`src/errors/`（`EditorError.ts`）、`test/cli.test.mjs`、`test/tokenizer.test.mjs`、`test/command-registry.test.mjs`、`test/model-editing.test.mjs`、`test/history.test.mjs`、`test/geometry-commands.test.mjs`；`Canvas.ts` 已删除。
+- 依赖方向：`SvgEditorCli` 导入 `Document`、`ShapeFactory`、`Shape`/`ShapeContainer` 类型、`Tokenizer`、`CommandParser`、`TreeFormatter`、`ShowFormatter`、`io` 和 `EditorError`；`CommandParser` 只导入 `EditorError` 并以类型方式引用 `ShapeCreation`，不访问 Document、不构造图形；`Tokenizer` 只导入 `EditorError`，不依赖模型或 I/O；`EditorError` 没有项目内导入；`TreeFormatter`/`ShowFormatter`/`SvgSerializer` 导入 `Document`/`Shape` 并只调用 `describe()`/`toSvgElement()`/`asContainer()`；`Document` 组合 `ShapeRegistry`、`ShapeFactory` 和 `RootContainer`，通过工厂的 `g` 创建器注入同一 registry，通过 `Shape.asContainer()` 递归统计，并通过 `ShapeContainer.insert/indexOf/remove` 实现 `moveShape()`；`RootContainer` 和 `Group` 组合 `ChildShapeList`；`ChildShapeList` 使用 `ShapeRegistry`、`Shape` 和 `ShapeContainer`；`Shape` 以类型方式引用 `ShapeContainer` 并提供默认 `asContainer()`；`Group` 继承 `Shape`、实现 `ShapeContainer` 并覆盖 `asContainer()`；`Rect`、`Circle`、`Ellipse`、`Line`、`Text` 继承 `Shape`；`ShapeFactory` 注册并创建全部六种类型；`CommandRegistry` 只以类型方式引用同层 `Command`；`CommandExecutor` 以类型方式依赖 `Command` 和同层 `History`；`History` 只以类型方式依赖 `Command`；`GeometryCommand` 以类型方式依赖 `Shape`，`MoveCommand`/`ScaleCommand` 继承 `GeometryCommand`；commands 层可依赖 model 的几何 API，但未导入 CLI 或 I/O。未发现 `model → cli/io/errors` 的依赖。
 - 错误边界：`src/cli/` 中只有 `SvgEditorCli.handleLine` 的 `catch` 输出 `error: ...`；其他 CLI 方法不再直接打印错误，而是抛出 `EditorError`；Tokenizer 的引号错误也抛出 `EditorError`。模型层仍使用通用 `Error`，未在本任务中改造。
 - 多态输出：`TreeFormatter` 和 `SvgSerializer` 没有图形类型判断，Rect、Circle、Ellipse、Line、Text 与 Group 各自实现 `describe()`/`toSvgElement()`；`SvgSerializer` 只负责逐行缩进，Group 自身递归序列化子节点。
 - 图形创建分派：`SvgEditorCli.create` 调用 `CommandParser.parseCreate` 获得结构化结果后，统一调用 `ShapeFactory.create(type, creation)`；`g` 经 `Document.createGroup()` 委托工厂。CLI 中不再有按图形类型展开的构造分支；类型相关逻辑只在解析层的 `createSpecs` 语法表（待重构点：与工厂注册表覆盖同一组类型，需同步维护）；工厂内部只有一张类型到创建器的 Map；`CommandRegistry` 未修改。
@@ -461,11 +488,12 @@ History --> Command : stores same objects for undo/redo
 - show 输出：`ShowFormatter` 以 `Shape.describe()` 生成标签和属性明细，只剥离末尾 fill/stroke 段作为单独样式行，保留原始几何/文本内容；父标签来自 `Shape.parent.describe()`（根 `svg`、Group `g#id`），`ShapeContainer` 因此增加 `describe()` 多态标签；CLI 和格式化器都没有具体图形类型判断。
 - 词法解析：`src/cli/` 中没有 `command.split(/\s+/)`；CLI 通过 `Tokenizer.tokenize()` 获取 token 数组后再分派。
 - 注册表：`CommandRegistry` 只提供注册、查询、创建和名称列表；不执行命令，不创建具体命令；CLI 当前未导入或使用它。
-- 命令历史：`CommandExecutor` 只在 `execute()` 成功后调用 `History.record()`；失败命令不进入栈且不清空 redo。`History` 只保存同一个 `Command` 对象，undo/redo 成功后移动栈项，失败时栈不变；空栈返回 `false`。未创建具体命令，CLI 未接入 undo/redo。
+- 命令历史：`CommandExecutor` 只在 `execute()` 成功后调用 `History.record()`；失败命令不进入栈且不清空 redo。`History` 只保存同一个 `Command` 对象，undo/redo 成功后移动栈项，失败时栈不变；空栈返回 `false`。已实现 `MoveCommand`/`ScaleCommand`，但 CLI 尚未接入 undo/redo。
 - 模型编辑 API：`ChildShapeList.insert()` 校验整数索引、索引边界、重复挂载、重复 ID、自包含和祖先循环，`add()` 等价于末尾插入；`Document.moveShape()` 对同容器使用最终位置语义、跨容器使用插入位置语义，并在跨容器插入失败时回滚原容器原位置；测试覆盖正常、非法和边界路径，节点结构与 ID registry 保持一致。
+- 几何编辑：`Shape` 的多态几何 API 让命令只依赖 `translateBy`/`scaleBy` 与快照方法，CLI 和命令类没有按图形类型分支；`Group` 递归子孙且只应用一次；Text 只移动/缩放坐标，不改变内容；`canTranslateBy`/`canScaleBy` 在修改前检查整个子树的全部新值，防止非有限或非正尺寸。
 - 一类一文件：上述实现类均为独立文件，文件名与类名一致。
 - 文档一致性：根目录 README 的命令语法、已实现范围和运行方式，与本文件、`package.json`、源码和测试一致。
-- 阶段冲突：Command 接口、`CommandRegistry`、`CommandExecutor` 与 `History` 基础已实现，但具体编辑命令、Composite 和 CLI 的 undo/redo 尚未实现，已在本节和“未完成事项”中明确记录；`AGENTS.md` 未被修改。
+- 阶段冲突：Command 接口、`CommandRegistry`、`CommandExecutor`、`History`、`MoveCommand` 与 `ScaleCommand` 已实现，但其余具体编辑命令、Composite 编辑命令和 CLI 的 undo/redo 尚未实现，已在本节和“未完成事项”中明确记录；`AGENTS.md` 未被修改。
 
 ## 质量保证
 
@@ -473,8 +501,10 @@ History --> Command : stores same objects for undo/redo
 - `npm run typecheck`：通过，无类型错误。
 - 针对性测试：`npm run build` 后运行 `node --test test/cli.test.mjs`，65 个 CLI/模型测试全部通过（其中进程级 CLI 测试 54 个，CommandParser 单元 2 个，工厂/Group 模型测试 9 个）。
 - Task 4-A 针对性测试：`node --test test/model-editing.test.mjs test/history.test.mjs`，17 个测试全部通过（History 10 + ModelEditing 7）。
-- `npm test`：先构建，再运行 `node --test test/cli.test.mjs test/tokenizer.test.mjs test/command-registry.test.mjs test/model-editing.test.mjs test/history.test.mjs`；102 个测试通过，0 失败（CLI 文件 65 + CommandRegistry 8 + History 10 + ModelEditing 7 + Tokenizer 12）。
+- Task 4-B 针对性测试：`node --test test/geometry-commands.test.mjs`，14 个测试全部通过。
+- `npm test`：先构建，再运行 `node --test test/cli.test.mjs test/tokenizer.test.mjs test/command-registry.test.mjs test/model-editing.test.mjs test/history.test.mjs test/geometry-commands.test.mjs`；116 个测试通过，0 失败（CLI 文件 65 + CommandRegistry 8 + GeometryCommands 14 + History 10 + ModelEditing 7 + Tokenizer 12）。
 - 不变量检查：测试覆盖根容器顺序、大小写敏感 ID、重复 ID、重复/跨容器挂载、添加/移除失败不改状态、移除后清除父节点、ID 复用，以及 ID 索引与容器内容一致。
+- move/scale 检查：测试覆盖五种叶形与 Group 的平移/缩放字段、Group 嵌套子孙只应用一次、Text 内容与各图形样式不变、快照往返、叶形和 Group 的 undo/redo、连续 undo/redo、非法因子/增量、构造失败保留 redo 栈、嵌套子节点结构和 ID 查询保持，以及溢出/下溢结果在修改前被拒绝。
 - 历史检查：测试覆盖成功后记录、失败不记录且保留双栈、undo/redo 抛错时栈不变、新命令清空 redo、空栈返回 `false`、同一命令对象往返、属性旧值恢复、父子/顺序/ID 查询恢复、连续两次 undo/redo 和失败命令不污染文档/历史。
 - 模型编辑 API 检查：测试覆盖开头/中间/末尾插入、非法索引、重复挂载、重复 ID、自包含、祖先循环、跨容器移动、同容器最终位置重排、失败回滚，以及 `indexOf` 的已挂接/外部节点行为；所有失败路径均断言结构与 registry 不变。
 - 引用检查：`src/` 中无 `Canvas`、`RectangleShape` 或 `createRectangle` 残留；`TreeFormatter`/`ShowFormatter`/`SvgSerializer` 只调用 `describe()`/`toSvgElement()`/`asContainer()`，未读取图形专属属性。
@@ -498,6 +528,7 @@ History --> Command : stores same objects for undo/redo
 - 浏览器验收：Task 3-J 实际通过本地 HTTP 服务在浏览器打开代表性 SVG，确认全部图形/文本渲染正常；未做多浏览器兼容性测试。
 - Git 检查（Task 3-J）：本轮开始时 `main` 为 `4436c83`、`origin/main` 为 `5f7d600`（本地领先 3 个提交），工作区干净；完成后的实际状态为 `main...origin/main [ahead 3]`，未提交修改为 `doc/README.md`、`test/cli.test.mjs`、`项目规划.md`（`git diff --stat` 为 3 个文件、+123/−12）；`git diff --check` 未报告空白错误，仅提示 LF/CRLF 换行符警告；未创建 commit、push 或 tag，改动保留等待审查。
 - Git 检查（Task 4-A）：开始时 `main` 与 `origin/main` 均为 `c5b316e`，工作区仅有用户新增的 `项目规划.md` 阶段 4 规划修改；完成后 `main...origin/main` 无分歧，未提交修改为 `README.md`、`doc/README.md`、`package.json`、`src/model/ChildShapeList.ts`、`Document.ts`、`Group.ts`、`RootContainer.ts`、`ShapeContainer.ts`、`项目规划.md`，新增未跟踪文件为 `src/commands/CommandExecutor.ts`、`src/commands/History.ts`、`test/history.test.mjs`、`test/model-editing.test.mjs`；`git diff --check` 未报告空白错误，仅提示 LF/CRLF 换行符警告；未创建 commit、push 或 tag，改动保留等待审查。
+- Git 检查（Task 4-B）：开始时 `main` 为 `0ff2da9`、`origin/main` 为 `c5b316e`（本地领先 1 个提交），工作区干净；完成后仍为 `main...origin/main [ahead 1]`，未提交修改为 `README.md`、`doc/README.md`、`package.json`、`src/model/Shape.ts`、`Rect.ts`、`Circle.ts`、`Ellipse.ts`、`Line.ts`、`Text.ts`、`Group.ts`、`项目规划.md`，新增未跟踪文件为 `src/commands/GeometryCommand.ts`、`MoveCommand.ts`、`ScaleCommand.ts`、`test/geometry-commands.test.mjs`；`git diff --check` 未报告空白错误，仅提示 LF/CRLF 换行符警告；未创建 commit、push 或 tag，改动保留等待审查。
 
 ## 未完成事项
 
@@ -505,14 +536,16 @@ History --> Command : stores same objects for undo/redo
 - `show` 对 Group 只输出头部行；根级父标签固定显示为 `svg`；这是作业未明确处的最小决策。
 - `tree` 输出不包含 `(N elements)` 行；元素计数仅由 `save` 消息体现，沿用 `Document.countShapes()`。
 - Group 在挂接文档前即可向共享 registry 添加子节点；移除非空 Group 不会递归处理后代，后代仍保留注册并形成脱离文档的子树。后续 Composite 编辑命令需明确这些生命周期语义。
-- `read`、`canvas`、`move`、`scale`、`set`、`delete`、`group`、`ungroup`、`addto`、`front`、`back`、`undo`、`redo`。
-- 具体编辑命令、CLI 的 undo/redo、Composite 统一编辑操作尚未实现；`Command` 接口、`CommandRegistry`、`CommandExecutor` 和 `History` 是基础层，尚未接入 CLI；Group 目前具备容器结构、空组/嵌套组创建和序列化。
+- `read`、`canvas`、`set`、`delete`、`group`、`ungroup`、`addto`、`front`、`back`、`undo`、`redo`；`move`/`scale` 目前只有命令类，CLI 尚未接入。
+- 具体编辑命令中仅 `MoveCommand`/`ScaleCommand` 已实现；CLI 的 `move`/`scale`、其余编辑命令和 undo/redo 尚未接入；`Command`、`CommandRegistry`、`CommandExecutor`、`History`、`GeometryCommand` 已具备基础能力；Group 目前具备容器结构、空组/嵌套组创建和序列化。
 - `History` 空栈返回 `false`；作业原文未规定 undo/redo 空栈的用户可见文案，需在 4-G 接入 CLI 时决定并记录。
-- 具体图形的属性写 API 尚未实现；`move`/`scale`/`set` 的图形属性与缩放语义需在 4-B/4-C 确认后补充。4-A 的属性快照测试使用测试替身，不代表生产图形已支持属性修改。
+- 具体图形的几何写 API 已随 4-B 实现；`set` 所需的样式/文本属性写 API（fill、stroke、stroke-width、text 内容等）尚未实现。
+- `scale` 按用户确认的规则只缩放几何，`stroke-width`、`font-size` 和 fill/stroke 颜色不变；Text 只改变坐标，字体大小和内容不变。`font-size` 当前不在 create/set 白名单，模型没有该字段。
+- `MoveCommand`/`ScaleCommand` 使用普通 `Error` 携带内部错误消息，尚未统一为 `EditorError`；CLI 成功反馈、`no such shape`、数值解析和错误文案对齐属于 4-G。
 - `save` 无文件名且无来源路径时明确报错；`read` 实现后再接入“保存到读入路径”。
 - 按本阶段规范，不支持行内注释、单引号引用和反斜杠转义；只有行首 `#` 作为整行注释。
 - Stage 2-E 已完成 `EditorError`、统一错误边界、固定单行 banner、TTY/管道提示符区分和 EOF/管道行为测试；交互式 TTY 提示符未纳入自动化测试。
-- Stage 3-A 已完成 Circle，Stage 3-B 已完成 Ellipse，Stage 3-C 已完成 Line，Stage 3-D 已完成 Text，Stage 3-E 已完成 Group 容器与嵌套 SVG 序列化，Stage 3-F 已完成注册表式工厂与 `create g`，Stage 3-G 已完成 `create ... in`，Stage 3-H 已完成递归 tree 与 `tree [id]`，Stage 3-I 已完成 `show <id>`，Stage 3-J 已完成阶段 3 集成验收（transcript、浏览器渲染、文档一致性）；阶段 3 完成。Stage 4-A 已完成 Command 模式校准、`CommandExecutor`/`History` 基础、快照约定和模型编辑基础；阶段 4 的具体编辑命令（`move`/`scale`/`set`/`delete`/`group`/`ungroup`/`addto`/`front`/`back`）和 CLI undo/redo 尚未实现。
+- Stage 3-A 已完成 Circle，Stage 3-B 已完成 Ellipse，Stage 3-C 已完成 Line，Stage 3-D 已完成 Text，Stage 3-E 已完成 Group 容器与嵌套 SVG 序列化，Stage 3-F 已完成注册表式工厂与 `create g`，Stage 3-G 已完成 `create ... in`，Stage 3-H 已完成递归 tree 与 `tree [id]`，Stage 3-I 已完成 `show <id>`，Stage 3-J 已完成阶段 3 集成验收（transcript、浏览器渲染、文档一致性）；阶段 3 完成。Stage 4-A 已完成 Command 模式校准、`CommandExecutor`/`History` 基础、快照约定和结构编辑基础；Stage 4-B 已完成 `MoveCommand`/`ScaleCommand`、几何更新 API 与精确 undo/redo；阶段 4 的其余具体编辑命令（`set`/`delete`/`group`/`ungroup`/`addto`/`front`/`back`）和 CLI undo/redo 尚未实现。
 - Tokenizer 不支持在双引号参数内转义双引号，CLI 无法直接输入包含双引号的 text 内容；模型层已正确处理并测试该情况，后续若需 CLI 支持需单独立项。
 - Text 的 tree 描述按作业格式用双引号包裹原始内容；内容自身含双引号时输出存在视觉歧义，未自行定义额外转义规则。
 - 阶段 2 的 A–E 已完成；具体编辑命令和 CLI undo/redo 仍属于后续阶段。Command 接口/注册表基础已在 Task 6 完成，`CommandExecutor`/`History` 基础在 Task 4-A 完成，Stage 2-E 统一错误与 REPL 行为已在 Task 7 完成，Tokenizer 与双引号参数已在 Task 5 完成，Document、根容器和父节点基础已在 Task 4 完成。
