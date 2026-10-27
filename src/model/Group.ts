@@ -71,16 +71,17 @@ export class Group extends Shape implements ShapeContainer {
 
   public toSvgElement(): string {
     const id = this.escapeAttribute(this.id);
+    const style = this.styleSvgAttributes();
 
     if (this.childList.children.length === 0) {
-      return `<g id="${id}"/>`;
+      return `<g id="${id}"${style}/>`;
     }
 
     const children = this.childList.children
       .map((child) => this.indentLines(child.toSvgElement(), 2))
       .join('\n');
 
-    return `<g id="${id}">\n${children}\n</g>`;
+    return `<g id="${id}"${style}>\n${children}\n</g>`;
   }
 
   private indentLines(value: string, spaces: number): string {

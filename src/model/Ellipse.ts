@@ -1,11 +1,11 @@
 import { Shape } from './Shape.js';
+import type { AttributeValue } from './Shape.js';
 
 export class Ellipse extends Shape {
   private centerX: number;
   private centerY: number;
   private horizontalRadius: number;
   private verticalRadius: number;
-  private readonly shapeFill: string | undefined;
 
   public constructor(
     id: string,
@@ -15,7 +15,7 @@ export class Ellipse extends Shape {
     ry: number,
     fill?: string,
   ) {
-    super(id);
+    super(id, fill);
 
     if (!Number.isFinite(cx) || !Number.isFinite(cy)) {
       throw new Error('ellipse center coordinates must be finite numbers');
@@ -29,7 +29,6 @@ export class Ellipse extends Shape {
     this.centerY = cy;
     this.horizontalRadius = rx;
     this.verticalRadius = ry;
-    this.shapeFill = fill;
   }
 
   public get cx(): number {
@@ -48,8 +47,55 @@ export class Ellipse extends Shape {
     return this.verticalRadius;
   }
 
-  public get fill(): string | undefined {
-    return this.shapeFill;
+  public override getAttribute(name: string): AttributeValue | undefined {
+    switch (name) {
+      case 'cx':
+        return this.centerX;
+      case 'cy':
+        return this.centerY;
+      case 'rx':
+        return this.horizontalRadius;
+      case 'ry':
+        return this.verticalRadius;
+      default:
+        return super.getAttribute(name);
+    }
+  }
+
+  public override validateAttribute(name: string, value: AttributeValue): void {
+    switch (name) {
+      case 'cx':
+      case 'cy':
+        this.requireFiniteAttribute(name, value);
+        return;
+      case 'rx':
+        this.requirePositiveAttribute(name, value, 'rx');
+        return;
+      case 'ry':
+        this.requirePositiveAttribute(name, value, 'ry');
+        return;
+      default:
+        super.validateAttribute(name, value);
+    }
+  }
+
+  public override restoreAttribute(name: string, value: AttributeValue | undefined): void {
+    switch (name) {
+      case 'cx':
+        this.centerX = value as number;
+        return;
+      case 'cy':
+        this.centerY = value as number;
+        return;
+      case 'rx':
+        this.horizontalRadius = value as number;
+        return;
+      case 'ry':
+        this.verticalRadius = value as number;
+        return;
+      default:
+        super.restoreAttribute(name, value);
+    }
   }
 
   public translateBy(dx: number, dy: number): void {
@@ -100,15 +146,10 @@ export class Ellipse extends Shape {
   }
 
   public describe(): string {
-    const fill = this.shapeFill === undefined ? '' : ` fill=${this.shapeFill}`;
-    return `ellipse#${this.id} cx=${this.centerX} cy=${this.centerY} rx=${this.horizontalRadius} ry=${this.verticalRadius}${fill}`;
+    return `ellipse#${this.id} cx=${this.centerX} cy=${this.centerY} rx=${this.horizontalRadius} ry=${this.verticalRadius}${this.styleDescription()}`;
   }
 
   public toSvgElement(): string {
-    const fill = this.shapeFill === undefined
-      ? ''
-      : ` fill="${this.escapeAttribute(this.shapeFill)}"`;
-
-    return `<ellipse id="${this.escapeAttribute(this.id)}" cx="${this.centerX}" cy="${this.centerY}" rx="${this.horizontalRadius}" ry="${this.verticalRadius}"${fill}/>`;
+    return `<ellipse id="${this.escapeAttribute(this.id)}" cx="${this.centerX}" cy="${this.centerY}" rx="${this.horizontalRadius}" ry="${this.verticalRadius}"${this.styleSvgAttributes()}/>`;
   }
 }

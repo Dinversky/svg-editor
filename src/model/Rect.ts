@@ -1,11 +1,11 @@
 import { Shape } from './Shape.js';
+import type { AttributeValue } from './Shape.js';
 
 export class Rect extends Shape {
   private positionX: number;
   private positionY: number;
   private shapeWidth: number;
   private shapeHeight: number;
-  private readonly shapeFill: string | undefined;
 
   constructor(
     id: string,
@@ -15,7 +15,7 @@ export class Rect extends Shape {
     height: number,
     fill?: string,
   ) {
-    super(id);
+    super(id, fill);
 
     if (!Number.isFinite(x) || !Number.isFinite(y)) {
       throw new Error('rectangle coordinates must be finite numbers');
@@ -29,7 +29,6 @@ export class Rect extends Shape {
     this.positionY = y;
     this.shapeWidth = width;
     this.shapeHeight = height;
-    this.shapeFill = fill;
   }
 
   public get x(): number {
@@ -48,8 +47,55 @@ export class Rect extends Shape {
     return this.shapeHeight;
   }
 
-  public get fill(): string | undefined {
-    return this.shapeFill;
+  public override getAttribute(name: string): AttributeValue | undefined {
+    switch (name) {
+      case 'x':
+        return this.positionX;
+      case 'y':
+        return this.positionY;
+      case 'width':
+        return this.shapeWidth;
+      case 'height':
+        return this.shapeHeight;
+      default:
+        return super.getAttribute(name);
+    }
+  }
+
+  public override validateAttribute(name: string, value: AttributeValue): void {
+    switch (name) {
+      case 'x':
+      case 'y':
+        this.requireFiniteAttribute(name, value);
+        return;
+      case 'width':
+        this.requirePositiveAttribute(name, value, 'width');
+        return;
+      case 'height':
+        this.requirePositiveAttribute(name, value, 'height');
+        return;
+      default:
+        super.validateAttribute(name, value);
+    }
+  }
+
+  public override restoreAttribute(name: string, value: AttributeValue | undefined): void {
+    switch (name) {
+      case 'x':
+        this.positionX = value as number;
+        return;
+      case 'y':
+        this.positionY = value as number;
+        return;
+      case 'width':
+        this.shapeWidth = value as number;
+        return;
+      case 'height':
+        this.shapeHeight = value as number;
+        return;
+      default:
+        super.restoreAttribute(name, value);
+    }
   }
 
   public translateBy(dx: number, dy: number): void {
@@ -95,15 +141,10 @@ export class Rect extends Shape {
   }
 
   public describe(): string {
-    const fill = this.shapeFill === undefined ? '' : ` fill=${this.shapeFill}`;
-    return `rect#${this.id} x=${this.positionX} y=${this.positionY} w=${this.shapeWidth} h=${this.shapeHeight}${fill}`;
+    return `rect#${this.id} x=${this.positionX} y=${this.positionY} w=${this.shapeWidth} h=${this.shapeHeight}${this.styleDescription()}`;
   }
 
   public toSvgElement(): string {
-    const fill = this.shapeFill === undefined
-      ? ''
-      : ` fill="${this.escapeAttribute(this.shapeFill)}"`;
-
-    return `<rect id="${this.escapeAttribute(this.id)}" x="${this.positionX}" y="${this.positionY}" width="${this.shapeWidth}" height="${this.shapeHeight}"${fill}/>`;
+    return `<rect id="${this.escapeAttribute(this.id)}" x="${this.positionX}" y="${this.positionY}" width="${this.shapeWidth}" height="${this.shapeHeight}"${this.styleSvgAttributes()}/>`;
   }
 }

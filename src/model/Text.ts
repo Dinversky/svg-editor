@@ -1,9 +1,10 @@
 import { Shape } from './Shape.js';
+import type { AttributeValue } from './Shape.js';
 
 export class Text extends Shape {
   private positionX: number;
   private positionY: number;
-  private readonly textContent: string;
+  private textContent: string;
 
   public constructor(id: string, x: number, y: number, content: string) {
     super(id);
@@ -27,6 +28,49 @@ export class Text extends Shape {
 
   public get content(): string {
     return this.textContent;
+  }
+
+  public override getAttribute(name: string): AttributeValue | undefined {
+    switch (name) {
+      case 'x':
+        return this.positionX;
+      case 'y':
+        return this.positionY;
+      case 'text':
+        return this.textContent;
+      default:
+        return super.getAttribute(name);
+    }
+  }
+
+  public override validateAttribute(name: string, value: AttributeValue): void {
+    switch (name) {
+      case 'x':
+      case 'y':
+        this.requireFiniteAttribute(name, value);
+        return;
+      case 'text':
+        this.requireStringAttribute(name, value);
+        return;
+      default:
+        super.validateAttribute(name, value);
+    }
+  }
+
+  public override restoreAttribute(name: string, value: AttributeValue | undefined): void {
+    switch (name) {
+      case 'x':
+        this.positionX = value as number;
+        return;
+      case 'y':
+        this.positionY = value as number;
+        return;
+      case 'text':
+        this.textContent = value as string;
+        return;
+      default:
+        super.restoreAttribute(name, value);
+    }
   }
 
   public translateBy(dx: number, dy: number): void {
@@ -61,10 +105,10 @@ export class Text extends Shape {
   }
 
   public describe(): string {
-    return `text#${this.id} (${this.positionX},${this.positionY}) "${this.textContent}"`;
+    return `text#${this.id} (${this.positionX},${this.positionY}) "${this.textContent}"${this.styleDescription()}`;
   }
 
   public toSvgElement(): string {
-    return `<text id="${this.escapeAttribute(this.id)}" x="${this.positionX}" y="${this.positionY}">${this.escapeText(this.textContent)}</text>`;
+    return `<text id="${this.escapeAttribute(this.id)}" x="${this.positionX}" y="${this.positionY}"${this.styleSvgAttributes()}>${this.escapeText(this.textContent)}</text>`;
   }
 }

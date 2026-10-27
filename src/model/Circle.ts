@@ -1,10 +1,10 @@
 import { Shape } from './Shape.js';
+import type { AttributeValue } from './Shape.js';
 
 export class Circle extends Shape {
   private centerX: number;
   private centerY: number;
   private shapeRadius: number;
-  private readonly shapeFill: string | undefined;
 
   public constructor(
     id: string,
@@ -13,7 +13,7 @@ export class Circle extends Shape {
     r: number,
     fill?: string,
   ) {
-    super(id);
+    super(id, fill);
 
     if (!Number.isFinite(cx) || !Number.isFinite(cy)) {
       throw new Error('circle center coordinates must be finite numbers');
@@ -26,7 +26,6 @@ export class Circle extends Shape {
     this.centerX = cx;
     this.centerY = cy;
     this.shapeRadius = r;
-    this.shapeFill = fill;
   }
 
   public get cx(): number {
@@ -41,8 +40,47 @@ export class Circle extends Shape {
     return this.shapeRadius;
   }
 
-  public get fill(): string | undefined {
-    return this.shapeFill;
+  public override getAttribute(name: string): AttributeValue | undefined {
+    switch (name) {
+      case 'cx':
+        return this.centerX;
+      case 'cy':
+        return this.centerY;
+      case 'r':
+        return this.shapeRadius;
+      default:
+        return super.getAttribute(name);
+    }
+  }
+
+  public override validateAttribute(name: string, value: AttributeValue): void {
+    switch (name) {
+      case 'cx':
+      case 'cy':
+        this.requireFiniteAttribute(name, value);
+        return;
+      case 'r':
+        this.requirePositiveAttribute(name, value, 'radius');
+        return;
+      default:
+        super.validateAttribute(name, value);
+    }
+  }
+
+  public override restoreAttribute(name: string, value: AttributeValue | undefined): void {
+    switch (name) {
+      case 'cx':
+        this.centerX = value as number;
+        return;
+      case 'cy':
+        this.centerY = value as number;
+        return;
+      case 'r':
+        this.shapeRadius = value as number;
+        return;
+      default:
+        super.restoreAttribute(name, value);
+    }
   }
 
   public translateBy(dx: number, dy: number): void {
@@ -84,15 +122,10 @@ export class Circle extends Shape {
   }
 
   public describe(): string {
-    const fill = this.shapeFill === undefined ? '' : ` fill=${this.shapeFill}`;
-    return `circle#${this.id} cx=${this.centerX} cy=${this.centerY} r=${this.shapeRadius}${fill}`;
+    return `circle#${this.id} cx=${this.centerX} cy=${this.centerY} r=${this.shapeRadius}${this.styleDescription()}`;
   }
 
   public toSvgElement(): string {
-    const fill = this.shapeFill === undefined
-      ? ''
-      : ` fill="${this.escapeAttribute(this.shapeFill)}"`;
-
-    return `<circle id="${this.escapeAttribute(this.id)}" cx="${this.centerX}" cy="${this.centerY}" r="${this.shapeRadius}"${fill}/>`;
+    return `<circle id="${this.escapeAttribute(this.id)}" cx="${this.centerX}" cy="${this.centerY}" r="${this.shapeRadius}"${this.styleSvgAttributes()}/>`;
   }
 }

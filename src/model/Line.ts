@@ -1,11 +1,11 @@
 import { Shape } from './Shape.js';
+import type { AttributeValue } from './Shape.js';
 
 export class Line extends Shape {
   private startX: number;
   private startY: number;
   private endX: number;
   private endY: number;
-  private readonly shapeStroke: string | undefined;
 
   public constructor(
     id: string,
@@ -15,7 +15,7 @@ export class Line extends Shape {
     y2: number,
     stroke?: string,
   ) {
-    super(id);
+    super(id, undefined, stroke);
 
     if (
       !Number.isFinite(x1)
@@ -30,7 +30,6 @@ export class Line extends Shape {
     this.startY = y1;
     this.endX = x2;
     this.endY = y2;
-    this.shapeStroke = stroke;
   }
 
   public get x1(): number {
@@ -49,8 +48,51 @@ export class Line extends Shape {
     return this.endY;
   }
 
-  public get stroke(): string | undefined {
-    return this.shapeStroke;
+  public override getAttribute(name: string): AttributeValue | undefined {
+    switch (name) {
+      case 'x1':
+        return this.startX;
+      case 'y1':
+        return this.startY;
+      case 'x2':
+        return this.endX;
+      case 'y2':
+        return this.endY;
+      default:
+        return super.getAttribute(name);
+    }
+  }
+
+  public override validateAttribute(name: string, value: AttributeValue): void {
+    switch (name) {
+      case 'x1':
+      case 'y1':
+      case 'x2':
+      case 'y2':
+        this.requireFiniteAttribute(name, value);
+        return;
+      default:
+        super.validateAttribute(name, value);
+    }
+  }
+
+  public override restoreAttribute(name: string, value: AttributeValue | undefined): void {
+    switch (name) {
+      case 'x1':
+        this.startX = value as number;
+        return;
+      case 'y1':
+        this.startY = value as number;
+        return;
+      case 'x2':
+        this.endX = value as number;
+        return;
+      case 'y2':
+        this.endY = value as number;
+        return;
+      default:
+        super.restoreAttribute(name, value);
+    }
   }
 
   public translateBy(dx: number, dy: number): void {
@@ -99,10 +141,6 @@ export class Line extends Shape {
   }
 
   public toSvgElement(): string {
-    const stroke = this.shapeStroke === undefined
-      ? ''
-      : ` stroke="${this.escapeAttribute(this.shapeStroke)}"`;
-
-    return `<line id="${this.escapeAttribute(this.id)}" x1="${this.startX}" y1="${this.startY}" x2="${this.endX}" y2="${this.endY}"${stroke}/>`;
+    return `<line id="${this.escapeAttribute(this.id)}" x1="${this.startX}" y1="${this.startY}" x2="${this.endX}" y2="${this.endY}"${this.styleSvgAttributes()}/>`;
   }
 }

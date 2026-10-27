@@ -33,8 +33,8 @@ adds new shapes directly into a group. Commands for `group`/`ungroup` are not
 implemented; `tree` recursively displays groups and `show` reports per-node
 details. Other shape types, CLI editing commands, undo/redo, and the
 `box` plugin are not implemented. The `Command` interface, `CommandRegistry`,
-`CommandExecutor`, `History`, and testable `MoveCommand`/`ScaleCommand` exist,
-but editing commands are not yet available through the CLI and undo/redo is
+`CommandExecutor`, `History`, and testable `MoveCommand`/`ScaleCommand`/`SetCommand`
+exist, but editing commands are not yet available through the CLI and undo/redo is
 not yet exposed.
 
 ## Requirements
@@ -100,9 +100,9 @@ Input rules:
 The source layout follows the assignment architecture:
 
 - `src/cli/` — entry point, interactive loop, tokenization, command parsing, and tree output.
-- `src/model/` — `Shape`, `Rect`, `Circle`, `Ellipse`, `Line`, `Text`, `Group`, `Document`, container/ID management, and `ShapeFactory`.
-- `src/commands/` — `Command` interface, `CommandRegistry`, `CommandExecutor`, `History`, `GeometryCommand`, `MoveCommand`, and `ScaleCommand`; CLI integration, other edit commands, and CLI undo/redo are planned.
+- `src/model/` — `Shape`, `Rect`, `Circle`, `Ellipse`, `Line`, `Text`, `Group`, `Document`, container/ID management, `ShapeFactory`, and `SvgColor`.
+- `src/commands/` — `Command` interface, `CommandRegistry`, `CommandExecutor`, `History`, `GeometryCommand`, `MoveCommand`, `ScaleCommand`, and `SetCommand`; CLI integration, other edit commands, and CLI undo/redo are planned.
 - `src/io/` — SVG serialization and file writing.
 - `src/errors/` — shared `EditorError` type for expected editor errors.
-- `test/` — automated CLI, tokenizer, model, command-registry, history, model-editing, and geometry-command tests.
+- `test/` — automated CLI, tokenizer, model, command-registry, history, model-editing, geometry-command, and set-command tests.
 - `doc/README.md` — architecture and development record.
