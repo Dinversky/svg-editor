@@ -12,6 +12,19 @@ export class History {
     return this.redoStack.length > 0;
   }
 
+  public peekUndo(): Command | null {
+    return this.undoStack[this.undoStack.length - 1] ?? null;
+  }
+
+  public peekRedo(): Command | null {
+    return this.redoStack[this.redoStack.length - 1] ?? null;
+  }
+
+  public clear(): void {
+    this.undoStack.length = 0;
+    this.redoStack.length = 0;
+  }
+
   /** @internal 仅供 CommandExecutor 在 execute 成功后调用。 */
   public record(command: Command): void {
     this.undoStack.push(command);

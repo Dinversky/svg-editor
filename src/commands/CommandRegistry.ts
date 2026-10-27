@@ -1,11 +1,11 @@
 import type { Command } from './Command.js';
 
-export type CommandFactory = () => Command;
+export type CommandFactory<TRequest = unknown> = (request: TRequest) => Command;
 
-export class CommandRegistry {
-  private readonly factories = new Map<string, CommandFactory>();
+export class CommandRegistry<TRequest = unknown> {
+  private readonly factories = new Map<string, CommandFactory<TRequest>>();
 
-  public register(name: string, factory: CommandFactory): void {
+  public register(name: string, factory: CommandFactory<TRequest>): void {
     this.assertValidName(name);
 
     if (this.factories.has(name)) {
@@ -19,7 +19,7 @@ export class CommandRegistry {
     return this.factories.has(name);
   }
 
-  public create(name: string): Command {
+  public create(name: string, request?: TRequest): Command {
     this.assertValidName(name);
 
     const factory = this.factories.get(name);
@@ -27,7 +27,7 @@ export class CommandRegistry {
       throw new Error(`unknown command: ${name}`);
     }
 
-    return factory();
+    return factory(request as TRequest);
   }
 
   public names(): string[] {

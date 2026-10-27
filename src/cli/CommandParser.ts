@@ -1,4 +1,5 @@
 import { EditorError } from '../errors/EditorError.js';
+import type { AttributeValue } from '../model/Shape.js';
 import { SvgColor } from '../model/SvgColor.js';
 import type { ShapeCreation } from '../model/ShapeFactory.js';
 
@@ -23,6 +24,23 @@ interface CreateParameterSpec {
 }
 
 export class CommandParser {
+  private readonly numericAttributes = new Set([
+    'x',
+    'y',
+    'width',
+    'height',
+    'cx',
+    'cy',
+    'r',
+    'rx',
+    'ry',
+    'x1',
+    'y1',
+    'x2',
+    'y2',
+    'stroke-width',
+  ]);
+
   private readonly createSpecs: Readonly<Record<string, CreateParameterSpec>> = {
     rect: {
       usage: 'create rect <id> <x> <y> <w> <h> [fill] [in <group>]',
@@ -167,6 +185,90 @@ export class CommandParser {
     return args[0];
   }
 
+  public parseMove(args: string[]): { id: string; dx: number; dy: number } {
+    if (args.length !== 3) {
+      this.failUsage('move <id> <dx> <dy>');
+    }
+
+    return {
+      id: args[0],
+      dx: this.parseNumber(args[1], 'dx'),
+      dy: this.parseNumber(args[2], 'dy'),
+    };
+  }
+
+  public parseScale(args: string[]): { id: string; factor: number } {
+    if (args.length !== 2) {
+      this.failUsage('scale <id> <factor>');
+    }
+
+    return {
+      id: args[0],
+      factor: this.parseNumber(args[1], 'factor'),
+    };
+  }
+
+  public parseSet(args: string[]): {
+    id: string;
+    attribute: string;
+    value: AttributeValue;
+  } {
+    if (args.length !== 3) {
+      this.failUsage('set <id> <attr> <value>');
+    }
+
+    const attribute = args[1];
+    const value = this.numericAttributes.has(attribute)
+      ? this.parseNumber(args[2], attribute)
+      : args[2];
+
+    return { id: args[0], attribute, value };
+  }
+
+  public parseDelete(args: string[]): string {
+    return this.parseRequiredId(args, 'delete <id>');
+  }
+
+  public parseGroup(args: string[]): {
+    newGroupId: string;
+    ids: readonly string[];
+  } {
+    if (args.length < 2) {
+      this.failUsage('group <newGid> <id1> <id2>...');
+    }
+
+    return { newGroupId: args[0], ids: args.slice(1) };
+  }
+
+  public parseUngroup(args: string[]): string {
+    return this.parseRequiredId(args, 'ungroup <gid>');
+  }
+
+  public parseAddTo(args: string[]): {
+    containerId: string;
+    shapeId: string;
+  } {
+    if (args.length !== 2) {
+      this.failUsage('addto <gid> <id>');
+    }
+
+    return { containerId: args[0], shapeId: args[1] };
+  }
+
+  public parseFront(args: string[]): string {
+    return this.parseRequiredId(args, 'front <id>');
+  }
+
+  public parseBack(args: string[]): string {
+    return this.parseRequiredId(args, 'back <id>');
+  }
+
+  public parseNoArgs(args: string[], usage: string): void {
+    if (args.length !== 0) {
+      this.failUsage(usage);
+    }
+  }
+
   /** 末尾的 `in <containerId>` 子句属于命令结构，样式值中的单个 `in` 不受影响。 */
   private splitContainerClause(args: string[]): {
     shapeArgs: string[];
@@ -180,6 +282,14 @@ export class CommandParser {
     }
 
     return { shapeArgs: args };
+  }
+
+  private parseRequiredId(args: string[], usage: string): string {
+    if (args.length !== 1) {
+      this.failUsage(usage);
+    }
+
+    return args[0];
   }
 
   private parseNumber(token: string, fieldName: string): number {

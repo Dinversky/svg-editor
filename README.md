@@ -33,7 +33,7 @@ adds new shapes directly into a group. CLI commands for `group`/`ungroup` are no
 implemented; `tree` recursively displays groups and `show` reports per-node
 details. Other shape types, CLI editing commands, undo/redo, and the
 `box` plugin are not implemented. The `Command` interface, `CommandRegistry`,
-`CommandExecutor`, `History`, and testable `MoveCommand`/`ScaleCommand`/`SetCommand`/`DeleteCommand`/`GroupCommand`/`UngroupCommand`
+`CommandExecutor`, `History`, and testable `MoveCommand`/`ScaleCommand`/`SetCommand`/`DeleteCommand`/`GroupCommand`/`UngroupCommand`/`AddToCommand`/`FrontCommand`/`BackCommand`
 exist, but editing commands are not yet available through the CLI and undo/redo is
 not yet exposed.
 
@@ -101,8 +101,8 @@ The source layout follows the assignment architecture:
 
 - `src/cli/` — entry point, interactive loop, tokenization, command parsing, and tree output.
 - `src/model/` — `Shape`, `Rect`, `Circle`, `Ellipse`, `Line`, `Text`, `Group`, `Document`, container/ID management, `ShapeFactory`, and `SvgColor`.
-- `src/commands/` — `Command` interface, `CommandRegistry`, `CommandExecutor`, `History`, `GeometryCommand`, `MoveCommand`, `ScaleCommand`, `SetCommand`, `DeleteCommand`, `GroupCommand`, and `UngroupCommand`; CLI integration, other edit commands, and CLI undo/redo are planned.
+- `src/commands/` — `Command` interface, `CommandRegistry`, `CommandExecutor`, `History`, `GeometryCommand`, `MoveCommand`, `ScaleCommand`, `SetCommand`, `DeleteCommand`, `GroupCommand`, `UngroupCommand`, `AddToCommand`, `FrontCommand`, and `BackCommand`; CLI integration and CLI undo/redo are planned.
 - `src/io/` — SVG serialization and file writing.
 - `src/errors/` — shared `EditorError` type for expected editor errors.
-- `test/` — automated CLI, tokenizer, model, command-registry, history, model-editing, geometry-command, set-command, delete-command, and group-command tests.
+- `test/` — automated CLI, tokenizer, model, command-registry, history, model-editing, geometry-command, set-command, delete-command, group-command, and reorder-command tests.
 - `doc/README.md` — architecture and development record.
