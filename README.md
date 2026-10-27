@@ -32,9 +32,9 @@ model; empty groups can be created with `create g`, and `create ... in <group>`
 adds new shapes directly into a group. Commands for `group`/`ungroup` are not
 implemented; `tree` recursively displays groups and `show` reports per-node
 details. Other shape types, concrete editing commands, undo/redo, and the
-`box` plugin are not implemented. The `Command` interface and
-`CommandRegistry` foundation exist, but no concrete command classes or command
-history are implemented.
+`box` plugin are not implemented. The `Command` interface, `CommandRegistry`,
+`CommandExecutor`, and `History` foundation exist, but no concrete editing
+commands are implemented and undo/redo are not yet available in the CLI.
 
 ## Requirements
 
@@ -100,8 +100,8 @@ The source layout follows the assignment architecture:
 
 - `src/cli/` — entry point, interactive loop, tokenization, command parsing, and tree output.
 - `src/model/` — `Shape`, `Rect`, `Circle`, `Ellipse`, `Line`, `Text`, `Group`, `Document`, container/ID management, and `ShapeFactory`.
-- `src/commands/` — `Command` interface and `CommandRegistry` foundation; concrete edit commands and undo/redo are planned.
+- `src/commands/` — `Command` interface, `CommandRegistry`, `CommandExecutor`, and `History` foundation; concrete edit commands and CLI undo/redo are planned.
 - `src/io/` — SVG serialization and file writing.
 - `src/errors/` — shared `EditorError` type for expected editor errors.
-- `test/` — automated CLI, tokenizer, model, and command-registry tests.
+- `test/` — automated CLI, tokenizer, model, command-registry, history, and model-editing tests.
 - `doc/README.md` — architecture and development record.

@@ -15,6 +15,14 @@ export class ChildShapeList {
   }
 
   public add(shape: Shape): boolean {
+    return this.insert(shape, this.childShapes.length);
+  }
+
+  public insert(shape: Shape, index: number): boolean {
+    if (!Number.isInteger(index) || index < 0 || index > this.childShapes.length) {
+      return false;
+    }
+
     if (shape.parent !== null || this.createsCycle(shape)) {
       return false;
     }
@@ -28,8 +36,12 @@ export class ChildShapeList {
       return false;
     }
 
-    this.childShapes.push(shape);
+    this.childShapes.splice(index, 0, shape);
     return true;
+  }
+
+  public indexOf(shape: Shape): number {
+    return this.childShapes.indexOf(shape);
   }
 
   public remove(shape: Shape): boolean {

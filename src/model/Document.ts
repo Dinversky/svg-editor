@@ -54,6 +54,61 @@ export class Document {
     return this.rootContainer.remove(shape);
   }
 
+  /**
+   * 把已挂接的图形移动到目标容器。
+   * 同一容器内 index 表示移动后的最终位置（0 到 children.length - 1）；
+   * 跨容器时 index 表示插入位置（0 到目标 children.length）。
+   * 非法目标或位置、自包含/祖先循环均返回 false，失败时尽量恢复原结构。
+   */
+  public moveShape(shape: Shape, target: ShapeContainer, index: number): boolean {
+    const source = shape.parent;
+
+    if (source === null || !Number.isInteger(index) || index < 0) {
+      return false;
+    }
+
+    const originalIndex = source.indexOf(shape);
+    if (originalIndex === -1) {
+      return false;
+    }
+
+    if (source === target) {
+      if (index >= source.children.length) {
+        return false;
+      }
+
+      if (index === originalIndex) {
+        return true;
+      }
+
+      if (!source.remove(shape)) {
+        return false;
+      }
+
+      if (!source.insert(shape, index)) {
+        source.insert(shape, originalIndex);
+        return false;
+      }
+
+      return true;
+    }
+
+    if (index > target.children.length) {
+      return false;
+    }
+
+    if (!source.remove(shape)) {
+      return false;
+    }
+
+    if (!target.insert(shape, index)) {
+      source.insert(shape, originalIndex);
+      return false;
+    }
+
+    return true;
+  }
+
   public findShape(id: string): Shape | undefined {
     return this.shapeRegistry.findById(id);
   }

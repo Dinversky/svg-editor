@@ -5,6 +5,8 @@ export interface ShapeContainer {
   readonly parent: ShapeContainer | null;
   describe(): string;
   add(shape: Shape): boolean;
+  insert(shape: Shape, index: number): boolean;
   remove(shape: Shape): boolean;
   hasChild(shape: Shape): boolean;
+  indexOf(shape: Shape): number;
 }

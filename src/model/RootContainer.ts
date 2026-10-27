@@ -26,11 +26,19 @@ export class RootContainer implements ShapeContainer {
     return this.childList.add(shape);
   }
 
+  public insert(shape: Shape, index: number): boolean {
+    return this.childList.insert(shape, index);
+  }
+
   public remove(shape: Shape): boolean {
     return this.childList.remove(shape);
   }
 
   public hasChild(shape: Shape): boolean {
     return this.childList.has(shape);
+  }
+
+  public indexOf(shape: Shape): number {
+    return this.childList.indexOf(shape);
   }
 }
