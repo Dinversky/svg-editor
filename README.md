@@ -29,11 +29,11 @@ Repeating `init` replaces the current document. Because `read` is not
 implemented yet, a newly initialized document has no source path; `save`
 without a filename therefore reports an error. Group containers exist in the
 model; empty groups can be created with `create g`, and `create ... in <group>`
-adds new shapes directly into a group. Commands for `group`/`ungroup` are not
+adds new shapes directly into a group. CLI commands for `group`/`ungroup` are not
 implemented; `tree` recursively displays groups and `show` reports per-node
 details. Other shape types, CLI editing commands, undo/redo, and the
 `box` plugin are not implemented. The `Command` interface, `CommandRegistry`,
-`CommandExecutor`, `History`, and testable `MoveCommand`/`ScaleCommand`/`SetCommand`/`DeleteCommand`
+`CommandExecutor`, `History`, and testable `MoveCommand`/`ScaleCommand`/`SetCommand`/`DeleteCommand`/`GroupCommand`/`UngroupCommand`
 exist, but editing commands are not yet available through the CLI and undo/redo is
 not yet exposed.
 
@@ -101,8 +101,8 @@ The source layout follows the assignment architecture:
 
 - `src/cli/` — entry point, interactive loop, tokenization, command parsing, and tree output.
 - `src/model/` — `Shape`, `Rect`, `Circle`, `Ellipse`, `Line`, `Text`, `Group`, `Document`, container/ID management, `ShapeFactory`, and `SvgColor`.
-- `src/commands/` — `Command` interface, `CommandRegistry`, `CommandExecutor`, `History`, `GeometryCommand`, `MoveCommand`, `ScaleCommand`, `SetCommand`, and `DeleteCommand`; CLI integration, other edit commands, and CLI undo/redo are planned.
+- `src/commands/` — `Command` interface, `CommandRegistry`, `CommandExecutor`, `History`, `GeometryCommand`, `MoveCommand`, `ScaleCommand`, `SetCommand`, `DeleteCommand`, `GroupCommand`, and `UngroupCommand`; CLI integration, other edit commands, and CLI undo/redo are planned.
 - `src/io/` — SVG serialization and file writing.
 - `src/errors/` — shared `EditorError` type for expected editor errors.
-- `test/` — automated CLI, tokenizer, model, command-registry, history, model-editing, geometry-command, set-command, and delete-command tests.
+- `test/` — automated CLI, tokenizer, model, command-registry, history, model-editing, geometry-command, set-command, delete-command, and group-command tests.
 - `doc/README.md` — architecture and development record.
