@@ -117,6 +117,65 @@ export class Document {
     return this.shapeRegistry.has(id);
   }
 
+  /**
+   * 注销 shape 的全部后代（不含 shape 自身），保留子树关系与对象身份。
+   * 返回 false 时已尝试恢复此前注销的后代。
+   */
+  public unregisterDescendants(shape: Shape): boolean {
+    const descendants = this.collectDescendants(shape);
+    const unregistered: Shape[] = [];
+
+    for (const descendant of descendants) {
+      if (!this.shapeRegistry.unregister(descendant)) {
+        for (const registered of unregistered.reverse()) {
+          this.shapeRegistry.register(registered);
+        }
+
+        return false;
+      }
+
+      unregistered.push(descendant);
+    }
+
+    return true;
+  }
+
+  /** 注册 shape 的全部后代（不含 shape 自身）；失败时回滚已注册部分。 */
+  public registerDescendants(shape: Shape): boolean {
+    const descendants = this.collectDescendants(shape);
+    const registered: Shape[] = [];
+
+    for (const descendant of descendants) {
+      if (!this.shapeRegistry.register(descendant)) {
+        for (const shapeToUnregister of registered.reverse()) {
+          this.shapeRegistry.unregister(shapeToUnregister);
+        }
+
+        return false;
+      }
+
+      registered.push(descendant);
+    }
+
+    return true;
+  }
+
+  private collectDescendants(shape: Shape): Shape[] {
+    const descendants: Shape[] = [];
+    const container = shape.asContainer();
+
+    if (container === null) {
+      return descendants;
+    }
+
+    for (const child of container.children) {
+      descendants.push(child);
+      descendants.push(...this.collectDescendants(child));
+    }
+
+    return descendants;
+  }
+
   private countInContainer(container: ShapeContainer): number {
     let count = 0;
 
