@@ -38,15 +38,15 @@ circles, ellipses, lines, and text. The implemented commands are:
 
 Edit commands (including `create`) enter one undo unit each. Display commands
 (`tree`, `show`, `help`) do not. `init` replaces the document and clears the
-undo/redo history. Empty stacks report `error: nothing to undo` or
-`error: nothing to redo`.
+undo/redo history. After a successful `init` or `save`, `undo` and `redo`
+report `error: undo not allowed after io command` until the next edit command
+succeeds; the edit history itself is preserved across `save`. Empty stacks
+report `error: nothing to undo` or `error: nothing to redo`.
 
 Repeating `init` replaces the current document. Because `read` is not
 implemented yet, a newly initialized document has no source path; `save`
-without a filename therefore reports an error. `save` does not yet lock
-undo/redo after an IO command; that restriction belongs to the later `read`
-phase. Other shape types, `read`, `canvas`, and the `box` plugin are not
-implemented.
+without a filename therefore reports an error. Other shape types, `read`,
+`canvas`, and the `box` plugin are not implemented.
 
 ## Requirements
 

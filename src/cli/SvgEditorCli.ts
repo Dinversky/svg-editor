@@ -231,6 +231,7 @@ export class SvgEditorCli {
 
     this.document = new Document(width, height);
     this.history.clear();
+    this.history.lock();
     this.feedback.clear();
     console.log(`canvas ${width}x${height} created`);
   }
@@ -413,6 +414,7 @@ export class SvgEditorCli {
   private undoCommand(args: string[]): void {
     this.requireDocument();
     this.commandParser.parseNoArgs(args, 'undo');
+    this.assertHistoryUnlocked();
     const command = this.history.peekUndo();
     if (command === null) {
       throw new EditorError('nothing to undo');
@@ -425,6 +427,7 @@ export class SvgEditorCli {
   private redoCommand(args: string[]): void {
     this.requireDocument();
     this.commandParser.parseNoArgs(args, 'redo');
+    this.assertHistoryUnlocked();
     const command = this.history.peekRedo();
     if (command === null) {
       throw new EditorError('nothing to redo');
@@ -432,6 +435,12 @@ export class SvgEditorCli {
 
     this.history.redo();
     console.log(this.feedback.get(command)?.redo ?? 'redo');
+  }
+
+  private assertHistoryUnlocked(): void {
+    if (this.history.isLocked) {
+      throw new EditorError('undo not allowed after io command');
+    }
   }
 
   private createShape(document: Document, parsed: ParsedCreate): Shape {
@@ -510,6 +519,7 @@ export class SvgEditorCli {
     }
 
     const count = document.countShapes();
+    this.history.lock();
     console.log(`saved to ${filePath} (${count} element${count === 1 ? '' : 's'})`);
   }
 

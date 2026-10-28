@@ -3,6 +3,7 @@ import type { Command } from './Command.js';
 export class History {
   private readonly undoStack: Command[] = [];
   private readonly redoStack: Command[] = [];
+  private ioLocked = false;
 
   public get canUndo(): boolean {
     return this.undoStack.length > 0;
@@ -10,6 +11,11 @@ export class History {
 
   public get canRedo(): boolean {
     return this.redoStack.length > 0;
+  }
+
+  /** 文档类命令成功后为 true，直到下一次编辑命令成功执行。 */
+  public get isLocked(): boolean {
+    return this.ioLocked;
   }
 
   public peekUndo(): Command | null {
@@ -23,12 +29,19 @@ export class History {
   public clear(): void {
     this.undoStack.length = 0;
     this.redoStack.length = 0;
+    this.ioLocked = false;
+  }
+
+  /** 文档类命令成功后禁止 undo/redo；history 内容保留，下一次编辑成功时解禁。 */
+  public lock(): void {
+    this.ioLocked = true;
   }
 
   /** @internal 仅供 CommandExecutor 在 execute 成功后调用。 */
   public record(command: Command): void {
     this.undoStack.push(command);
     this.redoStack.length = 0;
+    this.ioLocked = false;
   }
 
   /**

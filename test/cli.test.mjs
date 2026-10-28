@@ -1853,3 +1853,205 @@ test('reports invalid quote syntax and continues with later commands', async () 
   assert.match(result.stdout, /error: invalid quote syntax/);
   assert.match(result.stdout, /rect#r1 created/);
 });
+
+test('replays a representative stage 4 transcript end to end', async (t) => {
+  const tempDir = createTempDir(t);
+  const filePath = path.join(tempDir, 'stage4.svg');
+
+  const result = await runCli(
+    'init 800 600\n' +
+    'create rect bg 0 0 800 600 #ffffff\n' +
+    'create text title 20 40 "Diagram"\n' +
+    'create circle c1 100 100 20 red\n' +
+    'create rect box 200 80 60 60 #3366ff\n' +
+    'group markers c1 box\n' +
+    'move c1 30 0\n' +
+    'undo\n' +
+    'redo\n' +
+    'set title text "Diagram v2"\n' +
+    'scale markers 2\n' +
+    'undo\n' +
+    'create g outer\n' +
+    'addto outer markers\n' +
+    'undo\n' +
+    'front bg\n' +
+    'undo\n' +
+    'back bg\n' +
+    'undo\n' +
+    'delete box\n' +
+    'undo\n' +
+    'create g inner in markers\n' +
+    'create line l1 0 0 10 10 in inner\n' +
+    'ungroup inner\n' +
+    'undo\n' +
+    'tree\n' +
+    `save ${filePath}\n` +
+    'undo\n' +
+    'redo\n' +
+    'move c1 5 5\n' +
+    'undo\n' +
+    'tree\n' +
+    'exit\n',
+  );
+
+  assert.equal(result.code, 0);
+  assert.equal(result.stderr, '');
+  assert.match(result.stdout, /g#markers created with 2 children/);
+  assert.match(result.stdout, /circle#c1 moved to \(130,100\)/);
+  assert.match(result.stdout, /circle#c1 moved back to \(100,100\)/);
+  assert.match(result.stdout, /text#title updated: text="Diagram v2"/);
+  assert.match(result.stdout, /g#markers scaled by 2/);
+  assert.match(result.stdout, /g#markers scaled back by 2/);
+  assert.match(result.stdout, /g#markers added to g#outer/);
+  assert.match(result.stdout, /g#markers moved back to svg/);
+  assert.match(result.stdout, /rect#bg moved to front/);
+  assert.match(result.stdout, /rect#bg order restored/);
+  assert.match(result.stdout, /rect#box deleted/);
+  assert.match(result.stdout, /rect#box restored into g#markers/);
+  assert.match(result.stdout, /g#inner ungrouped with 1 child/);
+  assert.match(result.stdout, /g#inner restored with 1 child/);
+  assert.match(result.stdout, /saved to .*stage4\.svg \(8 elements\)/);
+  assert.match(result.stdout, /error: undo not allowed after io command/);
+  assert.match(result.stdout, /circle#c1 moved to \(135,105\)/);
+  assert.match(result.stdout, /circle#c1 moved back to \(130,100\)/);
+
+  const expectedTree = [
+    'svg (800x600)',
+    '├── rect#bg x=0 y=0 w=800 h=600 fill=#ffffff',
+    '├── text#title (20,40) "Diagram v2"',
+    '├── g#markers',
+    '│   ├── circle#c1 cx=130 cy=100 r=20 fill=red',
+    '│   ├── rect#box x=200 y=80 w=60 h=60 fill=#3366ff',
+    '│   └── g#inner',
+    '│       └── line#l1 (0,0) -> (10,10)',
+    '└── g#outer',
+  ].join('\n');
+  assert.equal(withoutPrompt(result.stdout).split(expectedTree).length - 1, 2);
+
+  assert.equal(
+    readFileSync(filePath, 'utf8'),
+    [
+      '<?xml version="1.0" encoding="UTF-8"?>',
+      '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600">',
+      '  <rect id="bg" x="0" y="0" width="800" height="600" fill="#ffffff"/>',
+      '  <text id="title" x="20" y="40">Diagram v2</text>',
+      '  <g id="markers">',
+      '    <circle id="c1" cx="130" cy="100" r="20" fill="red"/>',
+      '    <rect id="box" x="200" y="80" width="60" height="60" fill="#3366ff"/>',
+      '    <g id="inner">',
+      '      <line id="l1" x1="0" y1="0" x2="10" y2="10"/>',
+      '    </g>',
+      '  </g>',
+      '  <g id="outer"/>',
+      '</svg>',
+      '',
+    ].join('\n'),
+  );
+});
+
+test('document commands lock undo and redo until the next edit', async (t) => {
+  const tempDir = createTempDir(t);
+  const filePath = path.join(tempDir, 'lock.svg');
+
+  const result = await runCli(
+    'init\n' +
+    'create rect r1 0 0 10 10\n' +
+    'undo\n' +
+    'redo\n' +
+    `save ${filePath}\n` +
+    'undo\n' +
+    'redo\n' +
+    'move r1 5 5\n' +
+    'undo\n' +
+    'undo\n' +
+    'init\n' +
+    'undo\n' +
+    'redo\n' +
+    'exit\n',
+  );
+
+  assert.equal(result.code, 0);
+  assert.match(result.stdout, /rect#r1 creation undone/);
+  assert.match(result.stdout, /rect#r1 moved to \(5,5\)/);
+  assert.match(result.stdout, /rect#r1 moved back to \(0,0\)/);
+  assert.match(result.stdout, /\(1 element\)/);
+
+  const lockErrors = result.stdout.match(
+    /error: undo not allowed after io command/g,
+  ) ?? [];
+  assert.equal(lockErrors.length, 4);
+  assert.doesNotMatch(result.stdout, /error: nothing to undo/);
+  assert.doesNotMatch(result.stdout, /error: nothing to redo/);
+
+  const lines = withoutPrompt(result.stdout).trimEnd().split('\n');
+  assert.deepEqual(lines.slice(-4), [
+    'canvas 800x600 created',
+    'error: undo not allowed after io command',
+    'error: undo not allowed after io command',
+    'Goodbye.',
+  ]);
+});
+
+test('failing edit commands are atomic and preserve the redo stack', async () => {
+  const result = await runCli(
+    'init 400 300\n' +
+    'create g g1\n' +
+    'create rect r1 0 0 10 10 in g1\n' +
+    'create rect r2 5 5 10 10\n' +
+    'move r1 1 1\n' +
+    'undo\n' +
+    'group bad g1 r1\n' +
+    'addto g1 g1\n' +
+    'addto r1 r1\n' +
+    'ungroup g1\n' +
+    'front missing\n' +
+    'set r2 fill notacolor\n' +
+    'delete missing\n' +
+    'scale r2 0\n' +
+    'tree\n' +
+    'redo\n' +
+    'tree\n' +
+    'exit\n',
+  );
+
+  assert.equal(result.code, 0);
+  assert.match(
+    result.stdout,
+    /error: cannot group a container into its own descendant: g1/,
+  );
+  assert.match(
+    result.stdout,
+    /error: cannot move a container into its own descendant: g1/,
+  );
+  assert.match(result.stdout, /error: not a container: r1/);
+  assert.match(
+    result.stdout,
+    /error: cannot ungroup top-level container: g1/,
+  );
+  assert.match(result.stdout, /error: no such shape: missing/);
+  assert.match(result.stdout, /error: invalid color for fill: notacolor/);
+  assert.match(result.stdout, /error: scale factor must be positive/);
+  assert.doesNotMatch(result.stdout, /g#bad/);
+
+  const beforeRedo = [
+    'svg (400x300)',
+    '├── g#g1',
+    '│   └── rect#r1 x=0 y=0 w=10 h=10',
+    '└── rect#r2 x=5 y=5 w=10 h=10',
+  ].join('\n');
+  const afterRedo = [
+    'svg (400x300)',
+    '├── g#g1',
+    '│   └── rect#r1 x=1 y=1 w=10 h=10',
+    '└── rect#r2 x=5 y=5 w=10 h=10',
+  ].join('\n');
+
+  assert.ok(withoutPrompt(result.stdout).includes(beforeRedo));
+  assert.ok(withoutPrompt(result.stdout).includes(afterRedo));
+  assert.equal(
+    withoutPrompt(result.stdout).indexOf(beforeRedo)
+    < withoutPrompt(result.stdout).indexOf(afterRedo),
+    true,
+  );
+  assert.match(result.stdout, /rect#r1 moved to \(1,1\)/);
+});

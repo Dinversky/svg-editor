@@ -6,12 +6,12 @@
 
 | 模块              | 职责                                            | 当前状态                   |
 | --------------- | --------------------------------------------- | ---------------------- |
-| `src/cli/`      | 读取输入、独立词法解析、命令参数解析（`CommandParser`）、命令分派、编辑命令构造与执行、undo/redo 反馈，递归格式化 tree、格式化 show。 | 已实现 Stage 4-G（编辑命令与历史接入） |
+| `src/cli/`      | 读取输入、独立词法解析、命令参数解析（`CommandParser`）、命令分派、编辑命令构造与执行、undo/redo 反馈与 IO 锁错误，递归格式化 tree、格式化 show。 | 已实现 Stage 4-H（编辑命令、历史接入与 IO undo 锁） |
 | `src/model/`    | 文档、根容器、Group 容器、子节点管理、全局 ID 索引、多态图形与注册表式图形工厂；Stage 4-A 至 4-F 增加结构编辑、几何更新、公共样式/属性更新、子树注册与移动 API。 | 已实现 Stage 3-G、4-A 至 4-F 模型编辑基础 |
 | `src/commands/` | Command 接口、带请求上下文的命令工厂注册表、统一执行入口（`CommandExecutor`）、undo/redo 历史（`History`）、`CreateCommand` 以及全部阶段 4 编辑命令。    | 已实现并由 CLI 接入 |
 | `src/io/`       | SVG 序列化与文件写入。                                 | 已实现 save 子集            |
 | `src/errors/`   | 共享的 `EditorError` 类型，承载可直接展示的错误消息。            | 已实现 Stage 2-E          |
-| `test/`         | 自动化 CLI、Tokenizer、模型、命令注册表（含上下文工厂）、命令历史、模型编辑 API、几何/set/delete/group/reorder 命令与编辑命令端到端测试。     | 已实现                    |
+| `test/`         | 自动化 CLI、Tokenizer、模型、命令注册表（含上下文工厂）、命令历史与 IO undo 锁、模型编辑 API、几何/set/delete/group/reorder 命令与编辑命令端到端测试。     | 已实现                    |
 
 当前实现的类：
 
@@ -29,14 +29,14 @@
 - `Line`：继承 `Shape`，用私有字段保存起止点，公共样式由基类保存；构造时校验所有端点为有限数值；通过几何 API 平移/缩放四个端点，tree 使用作业约定的 `(x1,y1) -> (x2,y2)` 格式，自身负责 `<line>` 元素生成。
 - `Text`：继承 `Shape`，用私有字段保存位置和文本内容，公共样式由基类保存；构造时校验坐标为有限数值；通过几何 API 平移/缩放 `x`、`y`，通过属性 API 修改 `x`、`y`、`text`，SVG 文本内容按 XML 规则转义。
 - `ShapeFactory`：以类型名为键的注册表式工厂，内置注册 `rect`、`circle`、`ellipse`、`line`、`text` 和 `g`；通过 `register`、`has`、`create(type, creation)`、`types()` 统一创建图形，`g` 创建参数携带文档 registry。
-- `SvgEditorCli`：命令协调者。持有当前 `Document`、`History`、`CommandExecutor`、带 `EditRequest` 上下文的 `CommandRegistry` 和命令反馈表；用 `readline` 逐行读取，先交给 `Tokenizer` 生成 token，再按命令名分派。`create`/`move`/`scale`/`set`/`delete`/`group`/`ungroup`/`addto`/`front`/`back` 的参数解析委托 `CommandParser`，CLI 解析 ID、检查文档/容器并构造请求，命令对象统一由注册表创建后交给执行器；只有成功命令进入 `History`。`undo`/`redo` 通过 `History.peekUndo()`/`peekRedo()` 取得命令并输出对应反馈；`init` 创建新文档并清空历史与反馈；`tree`/`show`/`help` 不进入历史；`handleLine` 是统一错误边界，捕获所有异常后输出单行 `error: ...`；启动时输出固定单行 banner，仅在 TTY 交互模式输出 `svg> ` 提示符。
+- `SvgEditorCli`：命令协调者。持有当前 `Document`、`History`、`CommandExecutor`、带 `EditRequest` 上下文的 `CommandRegistry` 和命令反馈表；用 `readline` 逐行读取，先交给 `Tokenizer` 生成 token，再按命令名分派。`create`/`move`/`scale`/`set`/`delete`/`group`/`ungroup`/`addto`/`front`/`back` 的参数解析委托 `CommandParser`，CLI 解析 ID、检查文档/容器并构造请求，命令对象统一由注册表创建后交给执行器；只有成功命令进入 `History`。`undo`/`redo` 通过 `History.peekUndo()`/`peekRedo()` 取得命令并输出对应反馈，`History.isLocked` 为 true 时报 `undo not allowed after io command`；`init` 创建新文档、清空历史并锁定历史；`save` 成功后锁定历史，下一次编辑命令成功时由 `History.record` 自动解锁；`tree`/`show`/`help` 不进入历史；`handleLine` 是统一错误边界，捕获所有异常后输出单行 `error: ...`；启动时输出固定单行 banner，仅在 TTY 交互模式输出 `svg> ` 提示符。
 - `CommandParser`：命令参数解析层。`parseInit`/`parseCreate`/`parseTree`/`parseShow`/`parseSave` 以及 `parseMove`/`parseScale`/`parseSet`/`parseDelete`/`parseGroup`/`parseUngroup`/`parseAddTo`/`parseFront`/`parseBack`/`parseNoArgs` 把 token 数组转换为结构化结果；`create` 的类型识别、参数个数/数值/正数校验、`in <containerId>` 尾缀拆分、fill/stroke 颜色语法校验，以及 `set` 的数值属性转换都集中在此；颜色接受 SVG 命名关键字（大小写不敏感）与 3/6 位十六进制，非法时报 `invalid color for <field>: <value>`；解析错误抛出 `EditorError`，不访问文档、不构造图形、不输出日志。
 - `Tokenizer`：把一行原始输入切分为 token 数组，处理普通空白、双引号参数和整行注释；引号错误抛出 `EditorError`；不执行命令、不访问文档、不输出日志。
 - `EditorError`：位于 `src/errors/`，继承 `Error` 并设置 `name = 'EditorError'`，只保存完整用户可读消息；不依赖模型、CLI、I/O 或具体命令，也不包含错误码或分类系统。
 - `Command`：接口，定义 `execute(): void` 和 `undo(): void` 命令契约；不包含 CLI、文档或输出逻辑。
 - `CommandRegistry`：以命令名为键保存 `CommandFactory<TRequest>`，`create(name, request?)` 把请求上下文传给工厂；提供注册、查询、创建和名称列表。默认 `TRequest = unknown`，原有零参数工厂仍可使用；CLI 使用 `EditRequest` 联合类型。注册表不执行命令，也不依赖模型或 I/O。
 - `CommandExecutor`：统一执行入口（Invoker），构造时注入 `History`；`execute(command)` 先调用 `command.execute()`，仅成功后把同一个命令对象交给 `History` 记录；执行失败时异常向上传播，不进入历史，也不清空 redo 栈。
-- `History`：管理 undo/redo 两个 `Command` 栈，不执行具体业务，也不读写模型快照。`record` 把成功命令压入 undo 栈并清空 redo 栈；`undo` 调用栈顶命令的 `undo()`，成功后把同一个对象移入 redo 栈；`redo` 复用同一对象再次调用 `execute()`，成功后移回 undo 栈；`peekUndo`/`peekRedo` 只读查看栈顶，`clear` 清空两栈；空栈返回 `false`，命令抛错时两个栈保持不变。
+- `History`：管理 undo/redo 两个 `Command` 栈，不执行具体业务，也不读写模型快照。`record` 把成功命令压入 undo 栈、清空 redo 栈并解除 IO 锁；`undo` 调用栈顶命令的 `undo()`，成功后把同一个对象移入 redo 栈；`redo` 复用同一对象再次调用 `execute()`，成功后移回 undo 栈；`peekUndo`/`peekRedo` 只读查看栈顶，`clear` 清空两栈并解除锁，`lock` 标记文档类命令后的 IO 锁，`isLocked` 供 CLI 判断是否拒绝 undo/redo；空栈返回 `false`，命令抛错时两个栈保持不变。
 - `CreateCommand`：接收已构造但尚未挂接的图形和目标容器；execute 通过 `ShapeContainer.add` 挂接并注册 ID；undo 要求图形仍是该容器子节点且容器为空，然后移除并注销；redo 复用同一图形对象。`create` 因此成为可撤销编辑命令。
 - `GeometryCommand`：几何编辑命令抽象基类，实现 `Command`；首次 `execute()` 先调用子类 `validate()` 检查全部新几何值，再递归捕获目标子树快照并调用 `apply()`；`undo()` 逐节点调用 `restoreGeometry` 精确恢复；redo 复用已有快照，不重新捕获。
 - `MoveCommand`：继承 `GeometryCommand`，接收目标图形和 `dx`/`dy`；构造时拒绝非有限增量，执行前通过 `canTranslateBy` 检查整个目标子树的平移结果，失败报 `move would produce invalid geometry`；`apply()` 调用目标的 `translateBy`，容器由模型递归到子孙。
@@ -69,7 +69,7 @@
 
 规划中的依赖：
 
-- 阶段 4 的编辑命令、CLI 接入和 undo/redo 已完成；剩余工作是 4-H 集成验收，而不是新的模块依赖。
+- 阶段 4 的编辑命令、CLI 接入、undo/redo 和 4-H 集成验收已完成；下一阶段（读取与文件往返）再引入新的模块依赖。
 
 ### PlantUML 包图
 
@@ -248,12 +248,13 @@ BackCommand --> Shape : reorder within parent
 - Stage 4-F `addto` 规则：`addto <gid> <id>` 把已有图形追加到目标容器最后一个子节点；目标容器必须是 Group（CLI 4-G 负责解析）；同容器操作允许并移到最后；移动整个子树；把容器移入自身/后代报 `cannot move a container into its own descendant: <id>`；undo 恢复原父容器和索引。
 - Stage 4-F `front`/`back` 规则：`front` 把图形移到同级数组末尾（SVG 视觉最上层），`back` 移到索引 0；只调整同一父容器内的顺序，不改变父子关系；对 Group 同样适用；已在边界时仍作为成功命令记录，undo 恢复原索引。
 - Stage 4-G CLI 接入：`SvgEditorCli` 保留命令名 `switch` 分派，参数解析委托 `CommandParser`，ID/容器解析在 CLI 层；`create`/move/scale/set/delete/group/ungroup/addto/front/back 的请求通过 `CommandRegistry<EditRequest>` 创建命令对象，再交给 `CommandExecutor`/`History`。只有 execute 成功的命令进入历史；失败命令不改文档、undo 栈或 redo 栈。
-- Stage 4-G 历史与反馈：`create` 通过 `CreateCommand` 成为可撤销编辑命令；`init` 创建新文档并清空历史和反馈；`undo`/`redo` 用 `History.peekUndo()`/`peekRedo()` 取得命令并输出对应反馈；空栈报 `nothing to undo`/`nothing to redo`。反馈文本按作业示例覆盖 move/set/delete/group，其余命令采用一致的 `<type>#<id> ...` 文案；`save` 后的 IO undo 锁按阶段 4 约定留到读取阶段。
-- `AGENTS.md` 要求 Command、Composite 和 undo/redo；当前已实现 Command 接口/注册表、`CommandExecutor`/`History`、`CreateCommand`、全部阶段 4 编辑命令、Group 容器与递归几何操作，并由 CLI 接入编辑命令和 undo/redo；后续阶段的 `read`、`canvas`、IO undo 锁和 `box` 插件仍未实现。
+- Stage 4-G 历史与反馈：`create` 通过 `CreateCommand` 成为可撤销编辑命令；`init` 创建新文档并清空历史和反馈；`undo`/`redo` 用 `History.peekUndo()`/`peekRedo()` 取得命令并输出对应反馈；空栈报 `nothing to undo`/`nothing to redo`。反馈文本按作业示例覆盖 move/set/delete/group，其余命令采用一致的 `<type>#<id> ...` 文案。
+- Stage 4-H IO undo 锁：`init` 成功后清空历史并锁定，`save` 成功后锁定；锁定时 `undo`/`redo` 统一报 `undo not allowed after io command`。锁不删除已有历史，下一次编辑命令成功执行时由 `History.record` 自动解锁，随后可继续撤销 save 之前的编辑。`read`/`canvas` 尚未实现，因此当前只有 `init` 和 `save` 触发该锁。
+- `AGENTS.md` 要求 Command、Composite 和 undo/redo；当前已实现 Command 接口/注册表、`CommandExecutor`/`History`、`CreateCommand`、全部阶段 4 编辑命令、IO undo 锁、Group 容器与递归几何操作，并由 CLI 接入编辑命令和 undo/redo；后续阶段的 `read`、`canvas` 和 `box` 插件仍未实现。
 - `SvgEditorCli.execute` 仍是命令名分派点；`CommandRegistry` 通过泛型请求上下文创建全部编辑命令，`CommandExecutor`/`History` 管理执行和历史。CLI 不读模型内部字段，命令不读终端、不输出日志；显示类命令不进入历史。
 - 图形类型、命令集合、SVG 格式是主要变化点；`Shape` 为新增图形提供统一多态接口、几何 API 和公共属性 API，`Circle`、`Ellipse`、`Line` 和 `Text` 验证了该扩展路径；`ShapeFactory` 已用注册表集中类型到创建器的映射，新增图形不再扩展类型分支；`Shape.asContainer()` 让容器识别、计数、分组、拆组和移动保持多态，`ShapeContainer`/`ChildShapeList` 由 `RootContainer` 和 `Group` 复用，`CommandRegistry` 的请求上下文和 `CommandExecutor`/`History` 为执行与撤销提供统一入口和栈管理，`Document.insert`/`moveShape`/`unregisterDescendants`/`registerDescendants` 为结构编辑提供受控 API。本阶段不提前创建插件类。
 
-### 快照与撤销约定（Stage 4-A 至 4-G）
+### 快照与撤销约定（Stage 4-A 至 4-H）
 
 - 不对整个 `Document` 做默认深拷贝；`History` 只保存命令对象，不解析或保存快照内容。
 - 具体命令在首次 `execute()` 时捕获撤销所需的最小旧状态；redo 复用同一命令对象，不得覆盖 undo 所需信息。若某类命令需要在重做时更新部分状态，必须说明原因并证明连续 execute/undo/redo 往返正确。
@@ -275,8 +276,44 @@ BackCommand --> Shape : reorder within parent
 - `group`/`ungroup` 已按该约定实现：`GroupCommand` 保存每个目标的原父容器/索引、命令顺序和新建 Group 对象；undo 移除 Group 后按原索引把目标插回各自父容器；`UngroupCommand` 保存 Group 的父容器、索引和子节点顺序，undo 恢复同一 Group 对象并重新装回子节点。两者 redo 均复用同一快照和对象。
 - `addto`/`front`/`back` 已按该约定实现：`AddToCommand` 保存原父容器和索引，通过 `Document.moveShape` 追加到目标容器末尾或把同容器目标移到最后；`FrontCommand`/`BackCommand` 保存原父容器和索引，分别把目标移到同级末尾/索引 0；undo 均用 `moveShape` 恢复原索引，redo 复用同一对象和快照。
 - `create` 已按该约定实现：`CreateCommand` 保存已构造但未挂接的图形和目标容器；execute 通过容器 `add` 挂接并注册 ID；undo 要求图形仍是该容器子节点且容器为空（LIFO 保证子孙创建已先撤销），然后移除并注销；redo 复用同一图形对象。
+- 文档类命令不保存编辑快照：`init` 清空历史并锁定，`save` 成功写入后锁定；锁定时 `undo`/`redo` 报 `undo not allowed after io command`，下一次编辑命令成功时解锁。`save` 不改变文档，因此历史内容保留。
 - 失败约定：命令必须在首次修改模型前完成全部可预见校验；`CommandExecutor` 只在 execute 成功后记录，`History` 只在 undo/redo 成功后转移栈项。若命令在修改后抛错，命令自身必须通过预校验或可靠回滚保证文档和历史不被部分污染。
-- 4-A 的测试用测试替身验证通用快照与历史行为；4-B 已用真实叶形和 Group 验证 move/scale 的几何快照、连续 undo/redo 和失败原子性；4-C 已验证 set 的几何、样式、文本旧值恢复和失败原子性；4-D 已验证叶形、嵌套叶形、空/非空 Group 的删除、ID 复用、完整子树恢复和 LIFO 顺序；4-E 已验证根级/跨父容器分组、嵌套/空 Group 拆组、顺序和完整 undo/redo；4-F 已验证跨容器 addto、同容器末尾移动、front/back 边界和 LIFO 重排；4-G 已验证 CLI 编辑命令、create 撤销、连续 undo/redo、新编辑清空 redo、失败保留 redo 和空栈提示。
+- 4-A 的测试用测试替身验证通用快照与历史行为；4-B 已用真实叶形和 Group 验证 move/scale 的几何快照、连续 undo/redo 和失败原子性；4-C 已验证 set 的几何、样式、文本旧值恢复和失败原子性；4-D 已验证叶形、嵌套叶形、空/非空 Group 的删除、ID 复用、完整子树恢复和 LIFO 顺序；4-E 已验证根级/跨父容器分组、嵌套/空 Group 拆组、顺序和完整 undo/redo；4-F 已验证跨容器 addto、同容器末尾移动、front/back 边界和 LIFO 重排；4-G 已验证 CLI 编辑命令、create 撤销、连续 undo/redo、新编辑清空 redo、失败保留 redo 和空栈提示；4-H 用端到端 transcript 复验全部编辑命令、嵌套 Group、精确树/SVG 恢复和 IO undo 锁。
+
+### 阶段 5 预决策：XML 解析库与 SVG 读取 parser（已决策，未实现）
+
+本节记录 Stage 5 `read` 实现前完成的选型与 parser 行为决策。**这些决策尚未写入任何代码，`read` 仍不可用**，也不代表对应行为已经过测试验证。
+
+#### XML 解析库选型
+
+- **选定 `fast-xml-parser`（v5 系列）**，使用 `preserveOrder: true` 模式。
+- 理由：项目读取的 SVG 都是小文件，性能差距不构成实际影响；`preserveOrder` 返回的元素数组天然保留子节点顺序，可直接按文档顺序挂接 Composite 树；纯 JavaScript、MIT 许可、无原生编译依赖；自动处理 XML 声明与注释。
+- 未选 `@xmldom/xmldom`：W3C DOM API 能完成任务，但 `childNodes` 需要自行过滤空白文本节点，样板代码更多，包体积更大。
+- 未选 `sax`：事件式解析要自己构建元素树与父子关系，对小文件场景属过度设计。
+- **与 XML 版本无关**：XML 1.0/1.1 的差异不构成约束，三个候选库都解析 XML 1.0。`SvgSerializer` 的现有输出（无命名空间前缀、无 CDATA、无注释、属性顺序固定）同样不构成选型约束——选型真正面对的是**外部 SVG 文件**，其属性顺序、缩进、缺 ID、注释等都不受我们控制。
+- 该库将成为项目第一个**运行时依赖**（当前 `package.json` 只有 `devDependencies`），实现时需写入 `dependencies` 而非 `devDependencies`。
+
+#### parser 行为决策
+
+| 事项 | 决策 | 依据与影响 |
+| --- | --- | --- |
+| 属性顺序 | 不保留原始顺序，`save` 按模型固定顺序输出 | round-trip 只保证语义一致（元素类型、ID、几何、受支持样式、父子关系、兄弟顺序），不保证字节级一致 |
+| 子节点顺序 | 保留，严格按文档顺序挂接 | 元素顺序即 z-order，tree 输出和 front/back 语义都依赖它 |
+| `transform` | 不解析、不烘焙到几何，打印 warning 后忽略 | 作业仅在 0.1 背景知识提到 transform（`<g>` 整体变换），命令规范中 `scale` 是“同乘到全部几何属性”；read 考核用例 `other.svg` 不含 transform；4-B 已记录“不引入 SVG `transform`”。影响：含 transform 的外部文件里图形落在原始坐标，重新保存后渲染位置与原文件不同，该文件不成立无损往返 |
+| 不支持的标签 | 跳过该元素及其子树，逐个打印 `warning: skipping unsupported element: <tag>` | 作业内核只支持 6 种类型；4.2 错误表只规定 `cannot read file`，未为不支持标签规定 error。影响：`<path>`、`<polygon>`、`<use>`、`<defs>` 等内容读入后丢失 |
+| 不支持的属性 | 静默丢弃，不打印 warning | 作业 4.4 规定 `data-kind` 在未安装插件时降级为普通 `g`、功能不损，说明忽略未知属性属设计内行为；属性数量多，逐个 warning 会刷屏。影响：`text-anchor`、`font-size`、`opacity` 等样式在 round-trip 后丢失（作业 0.1 的示例 SVG 就含 `text-anchor`、`font-size`） |
+| 颜色属性值 | 原样读入，不做 `SvgColor` 校验 | 模型层直接构造图形时 fill/stroke 本就接受任意字符串（见未完成事项），外部 SVG 可能使用 `none`、`url(#…)`、`rgb()` 等写法；拒绝会导致作业未要求的读取失败，保留才能无损往返。`create`/`set` 仍只接受命名色与 3/6 位 hex |
+| 数值属性与元素有效性 | 必需属性缺失、数值非有限或尺寸非正时，跳过该元素及其子树并打印 `warning: skipping invalid element: <<tag> id="<id>">` | 外部 SVG 允许 `width="0"`、百分比长度等我们模型不接受的值；跳过并警告比整体失败更可控，与“不支持标签”的处理保持一致 |
+| 重复 ID | 报 `error: id already exists: <id>`，整个 `read` 失败，当前文档保持不变 | 与 `create` 的既有错误文案统一；不自动改名，避免静默改变用户命名 |
+| 缺少 ID | 按作业规定自动补 ID 并打印 `warning: assigned id <tagName><n> to unnamed <<tag>>` | 序号按标签名独立递增（`rect1`、`rect2`、`circle1`…），并跳过文件中已被占用的 ID |
+| 画布尺寸 | 依次取 `<svg>` 的 `width`/`height`、`viewBox` 的第三/四值、默认 800×600 | `width`/`height` 缺失、非数值或非正时降级到下一来源 |
+| 命名空间 | 按元素本地名匹配标签，忽略命名空间前缀 | 避免 `<svg:rect>` 等写法被误判为不支持标签 |
+| `<text>` 内容 | 取元素的直接文本节点并去除首尾空白；其子元素按不支持标签规则跳过并 warning | 与序列化器的内联文本输出对齐；格式化的外部文件常带缩进换行 |
+| XML 声明、注释、元素间空白 | 忽略 | 不影响文档结构 |
+
+#### 尚未决定
+
+以下属于 `read` 命令本身的行为，留到阶段 5 任务拆分时确定：`read` 成功消息的精确格式、无参 `save` 记录“读入路径”的方式、`read` 成功后调用 `History.lock()` 的时机、读取失败时是否保留原文档路径状态。
 
 ## 过程记录
 
@@ -565,6 +602,20 @@ BackCommand --> Shape : reorder within parent
 - README 决策：本任务改变用户可见 CLI 命令、undo/redo 行为、阶段范围和已知限制，必须更新根 `README.md` 的命令列表、历史语义、`save` 限制和源码布局；构建/安装流程未变。
 - `项目规划.md` 同步：更新当前基线（`0053540`、4-F 已提交、4-G 源码已提交、172/172），标记 4-G 完成并把下一项标为 4-H。
 
+- Task 4-H 缺陷修复：用户报告文档类命令（`init`、`save`）后执行 `undo` 时没有拒绝，而是直接撤销上一条编辑命令。根因是 `History` 只记录编辑命令，文档类命令没有留下任何锁状态。修复方式：`History` 新增 `ioLocked`、`isLocked` 和 `lock()`；`init` 清空历史后调用 `lock()`，`save` 成功写入后调用 `lock()`；`SvgEditorCli.undo`/`redo` 在读取栈顶前检查 `isLocked`，锁定时抛 `EditorError('undo not allowed after io command')`。锁不删除历史，下一次编辑命令成功时由 `History.record` 自动解锁，因此 `save` 前的编辑仍可在新编辑之后继续撤销。`read`/`canvas` 尚未实现，当前只有 `init`/`save` 触发该锁。
+- Task 4-H 验证：`npm run typecheck` 通过；针对性测试 `node --test test/cli.test.mjs test/history.test.mjs test/command-registry.test.mjs` 为 88/88 通过（CLI 68 + History 12 + CommandRegistry 8）；`npm test` 为 168/168 通过（CLI 68 + CommandRegistry 8 + DeleteCommands 10 + GeometryCommands 14 + GroupCommands 11 + ReorderCommands 14 + SetCommands 12 + History 12 + ModelEditing 7 + Tokenizer 12）；`git diff --check` 无空白错误（仅 LF/CRLF 提示）。手工回放 transcript 验证：`save` 后 `undo`/`redo` 均输出 `error: undo not allowed after io command`，随后 `move` 解锁，`undo` 可继续恢复 `save` 前的编辑；`init` 后 `undo`/`redo` 仍报同一错误。
+- Task 4-H 集成测试：新增阶段 4 代表性 transcript（create/group/move/undo/redo/set/scale/addto/front/back/delete/ungroup）、IO 锁行为测试和失败原子性序列；断言精确 tree、save 元素计数、SVG 文件内容、失败后文档不变且 redo 栈保留。
+- Task 4-H 已知限制：IO 锁只覆盖已实现的 `init`/`save`，`read`/`canvas` 接入时需复用同一 `History.lock()`；TTY 提示符仍未自动化测试；`save` 无来源路径时仍报错，读取阶段再补“保存到读入路径”。
+- README 决策：4-H 改变用户可见的 `init`/`save` 后 undo/redo 行为，必须更新根 `README.md` 的历史语义说明；命令列表、构建/安装流程和源码布局未变，不做其他修改。
+- `项目规划.md` 同步：更新当前基线（`03d5b99`、4-G 文档已提交、4-H 本地未提交、168/168），标记 4-H 完成、阶段 4 完成，并把下一项标为阶段 5。
+
+- 阶段 5 预决策开始前检查：分支 `main`，HEAD `03d5b99`，`main...origin/main` 无分歧；工作区包含未提交的 Task 4-H 改动（`README.md`、`doc/README.md`、`src/cli/SvgEditorCli.ts`、`src/commands/History.ts`、`test/cli.test.mjs`、`test/command-registry.test.mjs`、`test/history.test.mjs`、`项目规划.md`），与 4-H 记录的“等待审查”状态一致，本次不触碰这些改动。
+- 阶段 5 预决策范围：仅记录 XML 解析库选型与读取 parser 行为决策，不改动源码、测试或 `package.json`，不安装依赖，`read` 仍未实现。
+- 阶段 5 选型过程：对照项目实际需求（小文件、需保留子节点顺序、需读属性与文本内容、需自动跳过注释与 XML 声明）比较 `fast-xml-parser`、`@xmldom/xmldom` 和 `sax`，选定 `fast-xml-parser` + `preserveOrder: true`。同时确认 XML 版本（1.0/1.1）与 `SvgSerializer` 的现有输出都不构成选型约束，选型的真正约束来自外部 SVG 文件的多样性。
+- 阶段 5 parser 决策依据：逐条回到作业原文核对。`transform` 只在 0.1 背景知识出现（作业第 45、48 行），命令规范不依赖它，read 考核用例 `other.svg` 也不含它，因此采用“warning + 忽略”；不支持标签在 4.2 错误表中没有对应 error 文案，因此采用“跳过 + warning”；不支持属性有 4.4 节 `data-kind` 降级为普通 `g`、“功能不损、语义降级”的官方先例，因此采用“静默丢弃”。重复 ID 复用 `create` 的既有文案 `id already exists`；缺少 ID 按作业第 134 行的 `warning: assigned id rect1 to unnamed <rect>` 实现。全部决策已写入“阶段 5 预决策”小节。
+- 阶段 5 预决策验证：本任务只修改文档，没有源码、测试或依赖变化，因此没有新增测试。实际执行 `npm run typecheck` 通过、`npm test` 168/168 通过（沿用 4-H 的测试构成）、`git diff --check` 无空白错误（仅 LF/CRLF 提示）；未手工运行 CLI，也未做浏览器验收。文档内容为决策记录，不代表任何 parser 行为已经实现或测试通过。
+- README 决策：本次只记录实现前决策，未改变 CLI 命令、构建/运行流程、仓库对外布局、当前已实现范围或用户可见行为，根 `README.md` 无需更新。
+
 ## 一致性自查
 
 - 模块划分：实际目录为 `src/cli/`（`main.ts`、`SvgEditorCli.ts`、`CommandParser.ts`、`Tokenizer.ts`、`TreeFormatter.ts`、`ShowFormatter.ts`）、`src/model/`（`Shape.ts`、`Rect.ts`、`Circle.ts`、`Ellipse.ts`、`Line.ts`、`Text.ts`、`Group.ts`、`Document.ts`、`ShapeRegistry.ts`、`ShapeContainer.ts`、`ChildShapeList.ts`、`RootContainer.ts`、`ShapeFactory.ts`、`SvgColor.ts`）、`src/commands/`（`Command.ts`、`CommandRegistry.ts`、`CommandExecutor.ts`、`History.ts`、`CreateCommand.ts`、`GeometryCommand.ts`、`MoveCommand.ts`、`ScaleCommand.ts`、`SetCommand.ts`、`DeleteCommand.ts`、`GroupCommand.ts`、`UngroupCommand.ts`、`AddToCommand.ts`、`FrontCommand.ts`、`BackCommand.ts`）、`src/io/`（`SvgSerializer.ts`、`SvgFileWriter.ts`）、`src/errors/`（`EditorError.ts`）、`test/cli.test.mjs`、`test/tokenizer.test.mjs`、`test/command-registry.test.mjs`、`test/model-editing.test.mjs`、`test/history.test.mjs`、`test/geometry-commands.test.mjs`、`test/set-command.test.mjs`、`test/delete-command.test.mjs`、`test/group-commands.test.mjs`、`test/reorder-commands.test.mjs`；`Canvas.ts` 已删除。
@@ -580,8 +631,8 @@ BackCommand --> Shape : reorder within parent
 - show 输出：`ShowFormatter` 以 `Shape.describe()` 生成标签和几何/内容明细，剥离末尾 `fill`/`stroke`/`stroke-width` 段后，再由 `Shape.fill`/`stroke`/`strokeWidth` getter 统一生成样式行，因此 Line 和 Group 的样式也能显示；父标签来自 `Shape.parent.describe()`（根 `svg`、Group `g#id`），CLI 和格式化器都没有具体图形类型判断。
 - 词法解析：`src/cli/` 中没有 `command.split(/\s+/)`；CLI 通过 `Tokenizer.tokenize()` 获取 token 数组后再分派。
 - 注册表：`CommandRegistry` 以 `CommandFactory<TRequest>` 保存命令工厂，`create(name, request?)` 把请求上下文传给工厂；默认 `TRequest = unknown`，原有零参数工厂仍可用。CLI 用 `EditRequest` 联合请求注册全部编辑命令并由 `CommandRegistry` 创建；注册表不执行命令、不依赖模型或 I/O。
-- 命令历史：`CommandExecutor` 只在 `execute()` 成功后调用 `History.record()`；失败命令不进入栈且不清空 redo。`History` 只保存同一个 `Command` 对象，undo/redo 成功后移动栈项，失败时栈不变；`peekUndo`/`peekRedo` 用于 CLI 读取反馈，`clear` 供 `init` 清空；空栈返回 `false` 并让 CLI 报 `nothing to undo`/`nothing to redo`。
-- CLI 编辑接入：`create`/move/scale/set/delete/group/ungroup/addto/front/back 都通过注册表构造命令并交给执行器；成功反馈和 undo/redo 反馈由 CLI 的 `Map<Command, CommandFeedback>` 保存，命令对象不输出日志。`create` 是可撤销命令；`init` 清空历史和反馈；`tree`/`show`/`help` 不进入历史。
+- 命令历史：`CommandExecutor` 只在 `execute()` 成功后调用 `History.record()`；失败命令不进入栈且不清空 redo。`History` 只保存同一个 `Command` 对象，undo/redo 成功后移动栈项，失败时栈不变；`peekUndo`/`peekRedo` 用于 CLI 读取反馈，`clear` 供 `init` 清空；空栈返回 `false` 并让 CLI 报 `nothing to undo`/`nothing to redo`。IO 锁由 `History.lock()` 设置，`isLocked` 供 CLI 在读取栈顶前拒绝 undo/redo；`record` 和 `clear` 解除锁，锁本身不清空历史。
+- CLI 编辑接入：`create`/move/scale/set/delete/group/ungroup/addto/front/back 都通过注册表构造命令并交给执行器；成功反馈和 undo/redo 反馈由 CLI 的 `Map<Command, CommandFeedback>` 保存，命令对象不输出日志。`create` 是可撤销命令；`init` 清空并锁定历史和反馈；`save` 成功写入后锁定历史，下一次编辑成功时自动解锁；`tree`/`show`/`help` 不进入历史。
 - `CommandParser` 覆盖范围：`init`/`create`/`tree`/`show`/`save` 以及全部编辑命令和 undo/redo 的参数校验都在解析层；`set` 的数值属性在解析层转换为 number，颜色/文本值保持字符串并交由模型校验。
 - 模型编辑 API：`ChildShapeList.insert()` 校验整数索引、索引边界、重复挂载、重复 ID、自包含和祖先循环，`add()` 等价于末尾插入；`Document.moveShape()` 对同容器使用最终位置语义、跨容器使用插入位置语义，并在跨容器插入失败时回滚原容器原位置；测试覆盖正常、非法和边界路径，节点结构与 ID registry 保持一致。
 - 几何编辑：`Shape` 的多态几何 API 让命令只依赖 `translateBy`/`scaleBy` 与快照方法，CLI 和命令类没有按图形类型分支；`Group` 递归子孙且只应用一次；Text 只移动/缩放坐标，不改变内容；`canTranslateBy`/`canScaleBy` 在修改前检查整个子树的全部新值，防止非有限或非正尺寸。
@@ -591,7 +642,7 @@ BackCommand --> Shape : reorder within parent
 - 移动与重排：`AddToCommand` 通过 `Document.moveShape` 把图形追加到目标容器末尾，同容器时移到最后；`FrontCommand`/`BackCommand` 分别移到同级末尾/索引 0。三者 undo 都用原父容器和原索引恢复，redo 复用快照；front/back 边界位置仍记录为成功命令，符合用户确认的规则。
 - 一类一文件：上述实现类均为独立文件，文件名与类名一致。
 - 文档一致性：根目录 README 的命令语法、已实现范围和运行方式，与本文件、`package.json`、源码和测试一致。
-- 阶段冲突：Command 接口、`CommandRegistry`、`CommandExecutor`、`History`、`CreateCommand` 和全部阶段 4 编辑命令已实现，CLI 已接入编辑命令与 undo/redo；剩余 `read`、`canvas`、IO undo 锁和 `box` 插件属于后续阶段，已在本节和“未完成事项”中明确记录；`AGENTS.md` 未被修改。
+- 阶段冲突：Command 接口、`CommandRegistry`、`CommandExecutor`、`History`、`CreateCommand`、全部阶段 4 编辑命令和 IO undo 锁已实现，CLI 已接入编辑命令与 undo/redo；剩余 `read`、`canvas` 和 `box` 插件属于后续阶段，已在本节和“未完成事项”中明确记录；`AGENTS.md` 未被修改。
 
 ## 质量保证
 
@@ -605,7 +656,8 @@ BackCommand --> Shape : reorder within parent
 - Task 4-E 针对性测试：`node --test test/group-commands.test.mjs`，11 个测试全部通过。
 - Task 4-F 针对性测试：`node --test test/reorder-commands.test.mjs`，14 个测试全部通过。
 - Task 4-G 针对性测试：`node --test test/cli.test.mjs test/history.test.mjs test/command-registry.test.mjs`，92 个测试全部通过（CLI 72 + History 11 + CommandRegistry 9）。
-- `npm test`：先构建，再运行 `node --test test/cli.test.mjs test/tokenizer.test.mjs test/command-registry.test.mjs test/model-editing.test.mjs test/history.test.mjs test/geometry-commands.test.mjs test/set-command.test.mjs test/delete-command.test.mjs test/group-commands.test.mjs test/reorder-commands.test.mjs`；172 个测试通过，0 失败（CLI 72 + CommandRegistry 9 + DeleteCommands 10 + GeometryCommands 14 + GroupCommands 11 + ReorderCommands 14 + SetCommands 12 + History 11 + ModelEditing 7 + Tokenizer 12）。
+- Task 4-H 针对性测试：`node --test test/cli.test.mjs test/history.test.mjs test/command-registry.test.mjs`，88 个测试全部通过（CLI 68 + History 12 + CommandRegistry 8）。
+- `npm test`：先构建，再运行 `node --test test/cli.test.mjs test/tokenizer.test.mjs test/command-registry.test.mjs test/model-editing.test.mjs test/history.test.mjs test/geometry-commands.test.mjs test/set-command.test.mjs test/delete-command.test.mjs test/group-commands.test.mjs test/reorder-commands.test.mjs`；168 个测试通过，0 失败（CLI 68 + CommandRegistry 8 + DeleteCommands 10 + GeometryCommands 14 + GroupCommands 11 + ReorderCommands 14 + SetCommands 12 + History 12 + ModelEditing 7 + Tokenizer 12）。
 - 不变量检查：测试覆盖根容器顺序、大小写敏感 ID、重复 ID、重复/跨容器挂载、添加/移除失败不改状态、移除后清除父节点、ID 复用，以及 ID 索引与容器内容一致。
 - move/scale 检查：测试覆盖五种叶形与 Group 的平移/缩放字段、Group 嵌套子孙只应用一次、Text 内容与各图形样式不变、快照往返、叶形和 Group 的 undo/redo、连续 undo/redo、非法因子/增量、构造失败保留 redo 栈、嵌套子节点结构和 ID 查询保持，以及溢出/下溢结果在修改前被拒绝。
 - set 检查：测试覆盖五种叶形几何属性、Text 内容、公共 fill/stroke/stroke-width、Group 样式和 SVG 属性顺序、未知/类型不适用属性、非有限数值、非正尺寸、非法颜色、非法 stroke-width、SetCommand 的 undo/redo、可选样式从无到有再清除、旧值本不合法时的精确恢复、构造失败不改文档/历史、嵌套节点结构和 ID 查询保持，以及 show 对 Rect/Line/Group 样式的显示。
@@ -615,6 +667,8 @@ BackCommand --> Shape : reorder within parent
 - CLI 编辑命令检查：测试覆盖 move/scale/set/delete/group/ungroup/addto/front/back 的端到端输出、tree/SVG 结果、undo/redo 反馈、create 撤销与重做、init 清空历史、空栈提示、新编辑清空 redo、失败命令不改文档且保留 redo、容器/祖先/叶形/未知 ID 错误，以及 CommandParser 新命令解析和 set 数值转换。
 - 注册表上下文检查：`CommandRegistry` 测试覆盖原有零参数工厂兼容、请求上下文传递给工厂、注册/创建/名称与错误行为。
 - 历史检查：测试覆盖成功后记录、失败不记录且保留双栈、undo/redo 抛错时栈不变、新命令清空 redo、空栈返回 `false`、同一命令对象往返、属性旧值恢复、父子/顺序/ID 查询恢复、连续两次 undo/redo 和失败命令不污染文档/历史。
+- IO undo 锁检查：`History` 测试覆盖 `lock()` 后 `isLocked` 为 true、`record()`/`clear()` 解锁、锁不清空双栈，以及 `peekUndo`/`peekRedo` 只读；CLI 测试覆盖 `save` 后 `undo`/`redo` 均报 `undo not allowed after io command`、下一次编辑解锁后可继续撤销 `save` 前的编辑，以及 `init` 后仍被锁定。
+- 阶段 4 集成检查：1 个 transcript 测试端到端覆盖 create/group/move/undo/redo/set/scale/addto/front/back/delete/ungroup、嵌套 Group、精确 tree（两次）和 save 元素计数；1 个测试覆盖失败命令（group/addto/ungroup/front/set/delete/scale）不改变文档、不污染 redo 栈且后续 redo 仍成功。未做浏览器验收（本阶段不改变 SVG 序列化）。
 - 模型编辑 API 检查：测试覆盖开头/中间/末尾插入、非法索引、重复挂载、重复 ID、自包含、祖先循环、跨容器移动、同容器最终位置重排、失败回滚，以及 `indexOf` 的已挂接/外部节点行为；所有失败路径均断言结构与 registry 不变。
 - 引用检查：`src/` 中无 `Canvas`、`RectangleShape` 或 `createRectangle` 残留；`TreeFormatter`/`ShowFormatter`/`SvgSerializer` 只调用 `describe()`/`toSvgElement()`/`asContainer()`，未读取图形专属属性。
 - Circle 检查：构造器拒绝空 ID、非有限圆心和非正/非有限半径；测试覆盖 `cx`/`cy`/`r` 的正常访问、可选 fill、describe/SVG 属性顺序与转义；CLI 测试覆盖重复 ID、非法参数、缺少/多余参数，并断言失败后 tree 只保留原有图形。
@@ -643,6 +697,9 @@ BackCommand --> Shape : reorder within parent
 - Git 检查（Task 4-E）：开始时 `main` 为 `6efff52`、`origin/main` 为 `c5b316e`（本地领先 4 个提交），工作区干净；完成后仍为 `main...origin/main [ahead 4]`，未提交修改为 `README.md`、`doc/README.md`、`package.json`、`项目规划.md`，新增未跟踪文件为 `src/commands/GroupCommand.ts`、`src/commands/UngroupCommand.ts`、`test/group-commands.test.mjs`；`git diff --check` 未报告空白错误，仅提示 LF/CRLF 换行符警告；未创建 commit、push 或 tag，改动保留等待审查。
 - Git 检查（Task 4-F）：开始时 `main` 为 `ba89ce5`、`origin/main` 为 `c5b316e`（本地领先 5 个提交），工作区干净；完成后仍为 `main...origin/main [ahead 5]`，未提交修改为 `README.md`、`doc/README.md`、`package.json`、`项目规划.md`，新增未跟踪文件为 `src/commands/AddToCommand.ts`、`src/commands/FrontCommand.ts`、`src/commands/BackCommand.ts`、`test/reorder-commands.test.mjs`；`git diff --check` 未报告空白错误，仅提示 LF/CRLF 换行符警告；未创建 commit、push 或 tag，改动保留等待审查。
 - Git 检查（Task 4-G）：开始时 `main` 为 `ba89ce5`、`origin/main` 为 `c5b316e`（本地领先 5 个提交），工作区包含未提交的 4-F 改动；任务期间仓库新增提交 `0053540`（`feat(commands): 实现 addto、front 和 back 重排命令及测试`），该提交实际包含 4-F 文件以及本次 4-G 的 `CommandParser`/`SvgEditorCli`/`CommandRegistry`/`History`/`CreateCommand` 和 `package.json` 测试列表。完成后 `main...origin/main [ahead 6]`，未提交修改为 `README.md`、`doc/README.md`、`test/cli.test.mjs`、`test/command-registry.test.mjs`、`test/history.test.mjs`、`项目规划.md`（`git diff --stat` 为 6 个文件、+385/−59）；`git diff --check` 未报告空白错误，仅提示 LF/CRLF 换行符警告；未创建 commit、push 或 tag，文档与测试改动保留等待审查。
+- Git 检查（Task 4-H）：开始时 `main` 为 `03d5b99`、`origin/main` 与本地一致，工作区干净；任务期间用户已在 `项目规划.md` 的 4-H 条目新增 IO undo 缺陷说明。完成后 `main...origin/main` 无分歧，未提交修改为 `README.md`、`doc/README.md`、`src/cli/SvgEditorCli.ts`、`src/commands/History.ts`、`test/cli.test.mjs`、`test/history.test.mjs`、`项目规划.md`；`test/command-registry.test.mjs` 仅显示元数据差异，`git diff` 无内容变化；`git diff --check` 未报告空白错误，仅提示 LF/CRLF 换行符警告；未创建 commit、push 或 tag，改动保留等待审查。
+- 阶段 5 预决策：`doc/README.md` 的「阶段 5 预决策」小节已明确标注“已决策，未实现”，与 `src/` 目录中不存在任何 parser/file reader、`package.json` 仍无运行时依赖、CLI 仍无 `read` 命令的实际状态一致；未把决策描述为已实现功能。
+- Git 检查（阶段 5 预决策）：开始时 `main` 为 `03d5b99`、`origin/main` 与本地一致，工作区包含未提交的 4-H 改动（本次未触碰）；完成后 `main...origin/main` 无分歧，未提交修改仍为 `README.md`、`doc/README.md`、`src/cli/SvgEditorCli.ts`、`src/commands/History.ts`、`test/cli.test.mjs`、`test/command-registry.test.mjs`、`test/history.test.mjs`、`项目规划.md`，本次仅追加文档内容；`git diff --check` 未报告空白错误，仅提示 LF/CRLF 换行符警告；未创建 commit、push 或 tag，改动保留等待审查。
 
 ## 未完成事项
 
@@ -650,8 +707,9 @@ BackCommand --> Shape : reorder within parent
 - `show` 对 Group 只输出头部行；根级父标签固定显示为 `svg`；这是作业未明确处的最小决策。
 - `tree` 输出不包含 `(N elements)` 行；元素计数仅由 `save` 消息体现，沿用 `Document.countShapes()`。
 - Group 在挂接文档前即可向共享 registry 添加子节点；移除非空 Group 不会递归处理后代，后代仍保留注册并形成脱离文档的子树。删除命令通过 `unregisterDescendants` 处理该场景；后续 Composite 编辑命令仍需明确生命周期语义。
-- `read`、`canvas`、IO 命令后的 undo 锁尚未实现；全部阶段 4 编辑命令和 undo/redo 已接入 CLI。
-- 全部阶段 4 编辑命令类、CLI 接入和 undo/redo 已实现；`create` 也是可撤销命令；`init` 清空历史；`save` 暂不锁定 undo/redo；Group 目前具备容器结构、空组/嵌套组创建、分组/拆组和序列化。
+- `read`、`canvas` 尚未实现；IO 命令后的 undo 锁已对 `init`/`save` 实现，`read`/`canvas` 接入时需复用 `History.lock()` 并在成功读取/创建画布后调用；全部阶段 4 编辑命令和 undo/redo 已接入 CLI。
+- 阶段 5 的 XML 解析库选型和 parser 行为已决策并记录在「阶段 5 预决策」小节，但**尚未实现**：`fast-xml-parser` 未安装，`src/io/` 中没有 parser 或 file reader，`read` 命令及其错误 `cannot read file: <path>` 仍不存在；这些决策需在实现时用测试验证。
+- 全部阶段 4 编辑命令类、CLI 接入和 undo/redo 已实现；`create` 也是可撤销命令；`init` 清空并锁定历史；`save` 成功写入后锁定 undo/redo，下一次编辑命令成功时自动解锁；Group 目前具备容器结构、空组/嵌套组创建、分组/拆组和序列化。
 - `History` 空栈返回 `false`；CLI 采用 `nothing to undo`/`nothing to redo`，该文案为作业未明确处的最小决策。
 - 几何属性、样式/文本属性、子树注册、分组/拆组和移动/重排 API 已随 4-B/4-C/4-D/4-E/4-F 实现；全部编辑命令的 CLI 参数解析、成功反馈和错误文案已在 4-G 接入。
 - `scale` 按用户确认的规则只缩放几何，`stroke-width`、`font-size` 和 fill/stroke 颜色不变；Text 只改变坐标，字体大小和内容不变。`set` 可修改公共样式和 Text 内容，但 `font-size` 不在 create/set 白名单，模型没有该字段。
@@ -663,7 +721,7 @@ BackCommand --> Shape : reorder within parent
 - `save` 无文件名且无来源路径时明确报错；`read` 实现后再接入“保存到读入路径”。
 - 按本阶段规范，不支持行内注释、单引号引用和反斜杠转义；只有行首 `#` 作为整行注释。
 - Stage 2-E 已完成 `EditorError`、统一错误边界、固定单行 banner、TTY/管道提示符区分和 EOF/管道行为测试；交互式 TTY 提示符未纳入自动化测试。
-- Stage 3-A 已完成 Circle，Stage 3-B 已完成 Ellipse，Stage 3-C 已完成 Line，Stage 3-D 已完成 Text，Stage 3-E 已完成 Group 容器与嵌套 SVG 序列化，Stage 3-F 已完成注册表式工厂与 `create g`，Stage 3-G 已完成 `create ... in`，Stage 3-H 已完成递归 tree 与 `tree [id]`，Stage 3-I 已完成 `show <id>`，Stage 3-J 已完成阶段 3 集成验收（transcript、浏览器渲染、文档一致性）；阶段 3 完成。Stage 4-A 已完成 Command 模式校准、`CommandExecutor`/`History` 基础、快照约定和结构编辑基础；Stage 4-B 已完成 `MoveCommand`/`ScaleCommand`、几何更新 API 与精确 undo/redo；Stage 4-C 已完成 `SetCommand`、公共样式与属性更新 API、show 样式显示；Stage 4-D 已完成 `DeleteCommand`、子树 ID 注销/恢复与完整 undo/redo；Stage 4-E 已完成 `GroupCommand`/`UngroupCommand`、分组/拆组顺序与完整 undo/redo；Stage 4-F 已完成 `AddToCommand`/`FrontCommand`/`BackCommand`、跨容器移动与同级重排；Stage 4-G 已完成 CLI 接入、`CreateCommand`、编辑命令执行/历史/undo/redo 反馈和空栈提示；阶段 4 仅剩集成验收（4-H）。
+- Stage 3-A 已完成 Circle，Stage 3-B 已完成 Ellipse，Stage 3-C 已完成 Line，Stage 3-D 已完成 Text，Stage 3-E 已完成 Group 容器与嵌套 SVG 序列化，Stage 3-F 已完成注册表式工厂与 `create g`，Stage 3-G 已完成 `create ... in`，Stage 3-H 已完成递归 tree 与 `tree [id]`，Stage 3-I 已完成 `show <id>`，Stage 3-J 已完成阶段 3 集成验收（transcript、浏览器渲染、文档一致性）；阶段 3 完成。Stage 4-A 已完成 Command 模式校准、`CommandExecutor`/`History` 基础、快照约定和结构编辑基础；Stage 4-B 已完成 `MoveCommand`/`ScaleCommand`、几何更新 API 与精确 undo/redo；Stage 4-C 已完成 `SetCommand`、公共样式与属性更新 API、show 样式显示；Stage 4-D 已完成 `DeleteCommand`、子树 ID 注销/恢复与完整 undo/redo；Stage 4-E 已完成 `GroupCommand`/`UngroupCommand`、分组/拆组顺序与完整 undo/redo；Stage 4-F 已完成 `AddToCommand`/`FrontCommand`/`BackCommand`、跨容器移动与同级重排；Stage 4-G 已完成 CLI 接入、`CreateCommand`、编辑命令执行/历史/undo/redo 反馈和空栈提示；Stage 4-H 已完成阶段 4 集成验收、IO undo 锁缺陷修复与文档同步；阶段 4 完成。
 - Tokenizer 不支持在双引号参数内转义双引号，CLI 无法直接输入包含双引号的 text 内容；模型层已正确处理并测试该情况，后续若需 CLI 支持需单独立项。
 - Text 的 tree 描述按作业格式用双引号包裹原始内容；内容自身含双引号时输出存在视觉歧义，未自行定义额外转义规则。
 - 阶段 2 的 A–E 已完成；具体编辑命令和 CLI undo/redo 已在阶段 4 完成。Command 接口/注册表基础已在 Task 6 完成，`CommandExecutor`/`History` 基础在 Task 4-A 完成，Stage 2-E 统一错误与 REPL 行为已在 Task 7 完成，Tokenizer 与双引号参数已在 Task 5 完成，Document、根容器和父节点基础已在 Task 4 完成。

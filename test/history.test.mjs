@@ -361,3 +361,46 @@ test('does not let a failed model edit pollute the document or history', () => {
   assert.equal(history.canUndo, false);
   assert.equal(history.canRedo, false);
 });
+
+test('locks after document commands and unlocks on the next successful edit', () => {
+  const history = new History();
+  const first = createLoggingCommand();
+  const second = createLoggingCommand();
+
+  assert.equal(history.isLocked, false);
+  history.record(first);
+  history.lock();
+  assert.equal(history.isLocked, true);
+  assert.equal(history.canUndo, true);
+  assert.equal(history.peekUndo(), first);
+
+  history.record(second);
+  assert.equal(history.isLocked, false);
+
+  history.lock();
+  history.clear();
+  assert.equal(history.isLocked, false);
+  assert.equal(history.canUndo, false);
+  assert.equal(history.canRedo, false);
+});
+
+test('peek exposes the top of each stack without changing them', () => {
+  const history = new History();
+  const first = createLoggingCommand();
+  const second = createLoggingCommand();
+
+  assert.equal(history.peekUndo(), null);
+  assert.equal(history.peekRedo(), null);
+
+  history.record(first);
+  history.record(second);
+  assert.equal(history.peekUndo(), second);
+
+  history.undo();
+  assert.equal(history.peekUndo(), first);
+  assert.equal(history.peekRedo(), second);
+
+  history.redo();
+  assert.equal(history.peekUndo(), second);
+  assert.equal(history.peekRedo(), null);
+});
