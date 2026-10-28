@@ -19,23 +19,34 @@ circles, ellipses, lines, and text. The implemented commands are:
 - Color parameters (`fill`/`stroke`) accept SVG color keywords (e.g. `red`,
   case-insensitive) and 3/6-digit hex forms (`#fff`, `#ff0000`); invalid colors
   are rejected with a single-line error.
+- `move <id> <dx> <dy>` — move a shape or group.
+- `scale <id> <factor>` — scale the geometry of a shape or group.
+- `set <id> <attr> <value>` — set a supported geometry, text, or style attribute.
+- `delete <id>` — delete a shape or a group with all of its descendants.
+- `group <newGid> <id1> <id2>...` — group existing shapes; children keep the
+  listed order and the new group is inserted at the first selected shape's position.
+- `ungroup <gid>` — dissolve a nested group and promote its children in place.
+  Root-level groups cannot be ungrouped.
+- `addto <gid> <id>` — move an existing shape into a group as its last child.
+- `front <id>` / `back <id>` — move a shape to the visual front/back among its siblings.
 - `tree [id]` — display the full canvas tree, or only the subtree rooted at
   the given shape/group ID.
 - `show <id>` — display the parent and attributes of a shape or group.
 - `save [file.svg]` — serialize the canvas to SVG and write it to a file.
+- `undo` / `redo` — undo or redo an edit command.
 - `help` / `exit`.
+
+Edit commands (including `create`) enter one undo unit each. Display commands
+(`tree`, `show`, `help`) do not. `init` replaces the document and clears the
+undo/redo history. Empty stacks report `error: nothing to undo` or
+`error: nothing to redo`.
 
 Repeating `init` replaces the current document. Because `read` is not
 implemented yet, a newly initialized document has no source path; `save`
-without a filename therefore reports an error. Group containers exist in the
-model; empty groups can be created with `create g`, and `create ... in <group>`
-adds new shapes directly into a group. CLI commands for `group`/`ungroup` are not
-implemented; `tree` recursively displays groups and `show` reports per-node
-details. Other shape types, CLI editing commands, undo/redo, and the
-`box` plugin are not implemented. The `Command` interface, `CommandRegistry`,
-`CommandExecutor`, `History`, and testable `MoveCommand`/`ScaleCommand`/`SetCommand`/`DeleteCommand`/`GroupCommand`/`UngroupCommand`/`AddToCommand`/`FrontCommand`/`BackCommand`
-exist, but editing commands are not yet available through the CLI and undo/redo is
-not yet exposed.
+without a filename therefore reports an error. `save` does not yet lock
+undo/redo after an IO command; that restriction belongs to the later `read`
+phase. Other shape types, `read`, `canvas`, and the `box` plugin are not
+implemented.
 
 ## Requirements
 
@@ -101,7 +112,7 @@ The source layout follows the assignment architecture:
 
 - `src/cli/` — entry point, interactive loop, tokenization, command parsing, and tree output.
 - `src/model/` — `Shape`, `Rect`, `Circle`, `Ellipse`, `Line`, `Text`, `Group`, `Document`, container/ID management, `ShapeFactory`, and `SvgColor`.
-- `src/commands/` — `Command` interface, `CommandRegistry`, `CommandExecutor`, `History`, `GeometryCommand`, `MoveCommand`, `ScaleCommand`, `SetCommand`, `DeleteCommand`, `GroupCommand`, `UngroupCommand`, `AddToCommand`, `FrontCommand`, and `BackCommand`; CLI integration and CLI undo/redo are planned.
+- `src/commands/` — `Command` interface, `CommandRegistry`, `CommandExecutor`, `History`, `CreateCommand`, `GeometryCommand`, `MoveCommand`, `ScaleCommand`, `SetCommand`, `DeleteCommand`, `GroupCommand`, `UngroupCommand`, `AddToCommand`, `FrontCommand`, and `BackCommand`; the CLI uses the registry, executor, and history.
 - `src/io/` — SVG serialization and file writing.
 - `src/errors/` — shared `EditorError` type for expected editor errors.
 - `test/` — automated CLI, tokenizer, model, command-registry, history, model-editing, geometry-command, set-command, delete-command, group-command, and reorder-command tests.
