@@ -1938,7 +1938,7 @@ test('replays a representative stage 4 transcript end to end', async (t) => {
   assert.match(result.stdout, /g#inner ungrouped with 1 child/);
   assert.match(result.stdout, /g#inner restored with 1 child/);
   assert.match(result.stdout, /saved to .*stage4\.svg \(8 elements\)/);
-  assert.match(result.stdout, /error: undo not allowed after io command/);
+  assert.match(result.stdout, /error: undo\/redo not allowed after io command/);
   assert.match(result.stdout, /circle#c1 moved to \(135,105\)/);
   assert.match(result.stdout, /circle#c1 moved back to \(130,100\)/);
 
@@ -2004,7 +2004,7 @@ test('document commands lock undo and redo until the next edit', async (t) => {
   assert.match(result.stdout, /\(1 element\)/);
 
   const lockErrors = result.stdout.match(
-    /error: undo not allowed after io command/g,
+    /error: undo\/redo not allowed after io command/g,
   ) ?? [];
   assert.equal(lockErrors.length, 4);
   assert.doesNotMatch(result.stdout, /error: nothing to undo/);
@@ -2013,8 +2013,8 @@ test('document commands lock undo and redo until the next edit', async (t) => {
   const lines = withoutPrompt(result.stdout).trimEnd().split('\n');
   assert.deepEqual(lines.slice(-4), [
     'canvas 800x600 created',
-    'error: undo not allowed after io command',
-    'error: undo not allowed after io command',
+    'error: undo/redo not allowed after io command',
+    'error: undo/redo not allowed after io command',
     'Goodbye.',
   ]);
 });
@@ -2119,7 +2119,7 @@ test('reads an SVG file with warnings, replaces the document, and locks undo', a
     + '│   └── circle#c2 cx=5 cy=5 r=2\n'
     + '└── ellipse#e1 cx=1 cy=2 rx=3 ry=4',
   ));
-  assert.match(result.stdout, /error: undo not allowed after io command/);
+  assert.match(result.stdout, /error: undo\/redo not allowed after io command/);
 });
 
 test('failed read preserves the current document and history', async (t) => {
@@ -2189,7 +2189,7 @@ test('canvas displays and resizes the canvas while preserving shapes and locking
   assert.match(result.stdout, /canvas 300x200\n/);
   assert.match(result.stdout, /canvas 400x500\n/);
   assert.match(result.stdout, /rect#r1 creation undone/);
-  assert.match(result.stdout, /error: undo not allowed after io command/);
+  assert.match(result.stdout, /error: undo\/redo not allowed after io command/);
   assert.match(result.stdout, /rect#r2 creation undone/);
   assert.ok(result.stdout.includes(
     'svg (400x500)\n└── rect#r1 x=1 y=2 w=3 h=4',
@@ -2344,7 +2344,7 @@ test('replays a representative stage 5 transcript', async (t) => {
   assert.ok(result.stdout.includes('canvas 40x30\n'));
   assert.ok(result.stdout.includes('canvas 300x200\n'));
   assert.equal(
-    (result.stdout.match(/error: undo not allowed after io command/g) ?? []).length,
+    (result.stdout.match(/error: undo\/redo not allowed after io command/g) ?? []).length,
     2,
   );
   assert.ok(result.stdout.includes(

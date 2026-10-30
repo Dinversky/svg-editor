@@ -44,7 +44,7 @@ circles, ellipses, lines, and text. The implemented commands are:
 Edit commands (including `create`) enter one undo unit each. Display commands
 (`tree`, `show`, `help`) do not. `init` replaces the document and clears the
 undo/redo history. After a successful `init`, `read`, or `save`, `undo` and
-`redo` report `error: undo not allowed after io command` until the next edit
+`redo` report `error: undo/redo not allowed after io command` until the next edit
 command succeeds; the edit history itself is preserved across `save`. Empty
 stacks report `error: nothing to undo` or `error: nothing to redo`.
 

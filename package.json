@@ -10,7 +10,7 @@
     "dev": "node --experimental-strip-types src/cli/main.ts",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "npm run build && node --test test/cli.test.mjs test/tokenizer.test.mjs test/command-registry.test.mjs test/model-editing.test.mjs test/history.test.mjs test/geometry-commands.test.mjs test/set-command.test.mjs test/delete-command.test.mjs test/group-commands.test.mjs test/reorder-commands.test.mjs test/application-command-dispatcher.test.mjs test/application.test.mjs test/svg-file-reader.test.mjs test/svg-xml-parser.test.mjs test/svg-document-builder.test.mjs"
+    "test": "npm run build && node --test test/cli.test.mjs test/tokenizer.test.mjs test/command-registry.test.mjs test/history.test.mjs test/model-editing.test.mjs test/editing-commands.test.mjs test/application.test.mjs test/svg-io.test.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",
