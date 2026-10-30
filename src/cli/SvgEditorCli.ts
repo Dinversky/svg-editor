@@ -88,6 +88,8 @@ export class SvgEditorCli {
   private printHelp(): void {
     console.log('Available commands:');
     console.log('  init [w] [h]                                  Create a new canvas.');
+    console.log('  read <file.svg>                               Read an SVG file into the canvas.');
+    console.log('  canvas [w] [h]                                Show or resize the canvas.');
     console.log('  create rect <id> <x> <y> <w> <h> [fill]       Create a rectangle.');
     console.log('  create circle <id> <cx> <cy> <r> [fill]       Create a circle.');
     console.log('  create ellipse <id> <cx> <cy> <rx> <ry> [fill] Create an ellipse.');

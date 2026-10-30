@@ -7,6 +7,17 @@ export interface InitRequest {
   readonly height: number;
 }
 
+export interface ReadRequest {
+  readonly command: 'read';
+  readonly filePath: string;
+}
+
+export interface CanvasRequest {
+  readonly command: 'canvas';
+  readonly width?: number;
+  readonly height?: number;
+}
+
 export interface CreateRequest {
   readonly command: 'create';
   readonly shapeType: string;
@@ -87,11 +98,13 @@ export interface ShowRequest {
 
 export interface SaveRequest {
   readonly command: 'save';
-  readonly filePath: string;
+  readonly filePath?: string;
 }
 
 export type ApplicationRequest =
   | InitRequest
+  | ReadRequest
+  | CanvasRequest
   | CreateRequest
   | MoveRequest
   | ScaleRequest

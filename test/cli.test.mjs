@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
@@ -18,6 +18,9 @@ const { ShapeFactory } = require('../dist/model/ShapeFactory.js');
 const { ShapeRegistry } = require('../dist/model/ShapeRegistry.js');
 const { Text } = require('../dist/model/Text.js');
 const { SvgSerializer } = require('../dist/io/SvgSerializer.js');
+const { SvgXmlParser } = require('../dist/io/SvgXmlParser.js');
+const { SvgDocumentBuilder } = require('../dist/io/SvgDocumentBuilder.js');
+const { TreeFormatter } = require('../dist/app/TreeFormatter.js');
 
 const cliPath = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -110,12 +113,13 @@ test('prints the exact banner, handles help, unknown commands, and exits', async
   );
   assert.match(result.stdout, /create text <id> <x> <y> "content"/);
   assert.match(result.stdout, /create g <id>/);
+  assert.match(result.stdout, /read <file\.svg>/);
   assert.match(result.stdout, /create <type> \.\.\. \[in <group>\]/);
   assert.match(result.stdout, /tree \[id\]/);
   assert.match(result.stdout, /show <id>/);
   assert.match(result.stdout, /^error: unknown command: unknown$/m);
   assert.doesNotMatch(result.stdout, /error: error:/);
-  assert.doesNotMatch(result.stdout, /svg> /);
+  assert.doesNotMatch(result.stdout, /^svg> /m);
   assert.match(result.stdout, /Goodbye\./);
 });
 
@@ -1094,6 +1098,32 @@ test('CommandParser parses init, tree, and save arguments', () => {
     { message: 'usage: init [w] [h]' },
   );
 
+  assert.equal(parser.parseRead(['a.svg']), 'a.svg');
+  assert.throws(
+    () => parser.parseRead([]),
+    { message: 'usage: read <file.svg>' },
+  );
+  assert.throws(
+    () => parser.parseRead(['a.svg', 'b.svg']),
+    { message: 'usage: read <file.svg>' },
+  );
+
+  assert.deepEqual(parser.parseCanvas([]), { width: undefined, height: undefined });
+  assert.deepEqual(parser.parseCanvas(['300']), { width: 300, height: undefined });
+  assert.deepEqual(parser.parseCanvas(['300', '400']), { width: 300, height: 400 });
+  assert.throws(
+    () => parser.parseCanvas(['0']),
+    { message: 'width must be positive' },
+  );
+  assert.throws(
+    () => parser.parseCanvas(['1', '-2']),
+    { message: 'height must be positive' },
+  );
+  assert.throws(
+    () => parser.parseCanvas(['1', '2', '3']),
+    { message: 'usage: canvas [w] [h]' },
+  );
+
   assert.equal(parser.parseTree([]), undefined);
   assert.equal(parser.parseTree(['g1']), 'g1');
   assert.throws(
@@ -1102,10 +1132,7 @@ test('CommandParser parses init, tree, and save arguments', () => {
   );
 
   assert.equal(parser.parseSave(['a.svg']), 'a.svg');
-  assert.throws(
-    () => parser.parseSave([]),
-    { message: "no file path. use 'save <file.svg>'" },
-  );
+  assert.equal(parser.parseSave([]), undefined);
   assert.throws(
     () => parser.parseSave(['a.svg', 'b.svg']),
     { message: 'usage: save [file.svg]' },
@@ -2054,4 +2081,290 @@ test('failing edit commands are atomic and preserve the redo stack', async () =>
     true,
   );
   assert.match(result.stdout, /rect#r1 moved to \(1,1\)/);
+});
+
+test('reads an SVG file with warnings, replaces the document, and locks undo', async (t) => {
+  const directory = createTempDir(t);
+  const filePath = path.join(directory, 'other.svg');
+  writeFileSync(
+    filePath,
+    '<?xml version="1.0" encoding="UTF-8"?>\n'
+    + '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300" viewBox="0 0 400 300">\n'
+    + '  <rect x="0" y="0" width="400" height="300" fill="#ffffff"/>\n'
+    + '  <text id="t1" x="10" y="290">imported</text>\n'
+    + '  <circle id="c1" cx="50" cy="50" r="10"/>\n'
+    + '  <g id="g1"><rect id="r2" width="10" height="10"/><circle id="c2" cx="5" cy="5" r="2"/></g>\n'
+    + '  <ellipse id="e1" cx="1" cy="2" rx="3" ry="4"/>\n'
+    + '</svg>\n',
+    'utf8',
+  );
+
+  const result = await runCli(
+    `read "${filePath}"\n`
+    + 'tree\n'
+    + 'undo\n'
+    + 'exit\n',
+  );
+
+  assert.equal(result.code, 0);
+  assert.match(result.stdout, /warning: assigned id rect1 to unnamed <rect>/);
+  assert.ok(result.stdout.includes(`read ${filePath} (7 elements)`));
+  assert.ok(withoutPrompt(result.stdout).includes(
+    'svg (400x300)\n'
+    + '├── rect#rect1 x=0 y=0 w=400 h=300 fill=#ffffff\n'
+    + '├── text#t1 (10,290) "imported"\n'
+    + '├── circle#c1 cx=50 cy=50 r=10\n'
+    + '├── g#g1\n'
+    + '│   ├── rect#r2 x=0 y=0 w=10 h=10\n'
+    + '│   └── circle#c2 cx=5 cy=5 r=2\n'
+    + '└── ellipse#e1 cx=1 cy=2 rx=3 ry=4',
+  ));
+  assert.match(result.stdout, /error: undo not allowed after io command/);
+});
+
+test('failed read preserves the current document and history', async (t) => {
+  const directory = createTempDir(t);
+  const missing = path.join(directory, 'missing.svg');
+
+  const result = await runCli(
+    'init 100 100\n'
+    + 'create rect r1 1 2 3 4\n'
+    + `read "${missing}"\n`
+    + 'tree\n'
+    + 'undo\n'
+    + 'exit\n',
+  );
+
+  assert.equal(result.code, 0);
+  assert.ok(result.stdout.includes(`error: cannot read file: ${missing}`));
+  assert.ok(result.stdout.includes('└── rect#r1 x=1 y=2 w=3 h=4'));
+  assert.match(result.stdout, /rect#r1 creation undone/);
+  assert.doesNotMatch(result.stdout, /read .*\(1 element\)/);
+});
+
+test('duplicate ids in a read file fail without replacing the document', async (t) => {
+  const directory = createTempDir(t);
+  const filePath = path.join(directory, 'duplicate.svg');
+  writeFileSync(
+    filePath,
+    '<svg width="10" height="10">'
+    + '<rect id="a" width="1" height="1"/>'
+    + '<circle id="a" r="1"/>'
+    + '</svg>',
+    'utf8',
+  );
+
+  const result = await runCli(
+    'init 100 100\n'
+    + 'create rect r1 1 2 3 4\n'
+    + `read "${filePath}"\n`
+    + 'tree\n'
+    + 'exit\n',
+  );
+
+  assert.equal(result.code, 0);
+  assert.match(result.stdout, /error: id already exists: a/);
+  assert.ok(result.stdout.includes('└── rect#r1 x=1 y=2 w=3 h=4'));
+  assert.doesNotMatch(result.stdout, /read .*\(2 elements\)/);
+});
+
+test('canvas displays and resizes the canvas while preserving shapes and locking undo', async () => {
+  const result = await runCli(
+    'init 100 200\n'
+    + 'create rect r1 1 2 3 4\n'
+    + 'canvas\n'
+    + 'undo\n'
+    + 'redo\n'
+    + 'canvas 300\n'
+    + 'undo\n'
+    + 'create rect r2 5 6 7 8\n'
+    + 'undo\n'
+    + 'canvas 400 500\n'
+    + 'tree\n'
+    + 'exit\n',
+  );
+
+  assert.equal(result.code, 0);
+  assert.match(result.stdout, /canvas 100x200\n/);
+  assert.match(result.stdout, /canvas 300x200\n/);
+  assert.match(result.stdout, /canvas 400x500\n/);
+  assert.match(result.stdout, /rect#r1 creation undone/);
+  assert.match(result.stdout, /error: undo not allowed after io command/);
+  assert.match(result.stdout, /rect#r2 creation undone/);
+  assert.ok(result.stdout.includes(
+    'svg (400x500)\n└── rect#r1 x=1 y=2 w=3 h=4',
+  ));
+});
+
+test('canvas rejects invalid arguments without changing size or locking history', async () => {
+  const result = await runCli(
+    'canvas\n'
+    + 'init 100 200\n'
+    + 'create rect r1 1 2 3 4\n'
+    + 'canvas 0\n'
+    + 'canvas abc\n'
+    + 'canvas -1 10\n'
+    + 'canvas 1 2 3\n'
+    + 'canvas\n'
+    + 'undo\n'
+    + 'exit\n',
+  );
+
+  assert.equal(result.code, 0);
+  assert.equal(
+    (result.stdout.match(/error: no document\. use 'init' or 'read' first/g) ?? []).length,
+    1,
+  );
+  assert.match(result.stdout, /error: width must be positive/);
+  assert.match(result.stdout, /error: invalid number for width: abc/);
+  assert.match(result.stdout, /error: usage: canvas \[w\] \[h\]/);
+  assert.ok(result.stdout.includes('canvas 100x200\n'));
+  assert.match(result.stdout, /rect#r1 creation undone/);
+});
+
+test('read, modify, and no-argument save round-trip the document', async (t) => {
+  const directory = createTempDir(t);
+  const filePath = path.join(directory, 'roundtrip.svg');
+  writeFileSync(
+    filePath,
+    '<svg width="100" height="50">'
+    + '<rect id="r1" x="1" y="2" width="10" height="20" fill="#abc" stroke="red" stroke-width="2"/>'
+    + '<g id="g1"><text id="t1" x="5" y="6">hello</text>'
+    + '<circle id="c1" cx="7" cy="8" r="9" fill="none"/></g>'
+    + '</svg>',
+    'utf8',
+  );
+
+  const result = await runCli(
+    `read "${filePath}"\n`
+    + 'move r1 5 5\n'
+    + 'set t1 text "changed"\n'
+    + 'save\n'
+    + 'exit\n',
+  );
+
+  assert.equal(result.code, 0);
+  assert.ok(result.stdout.includes(`saved to ${filePath} (4 elements)`));
+
+  const saved = new SvgDocumentBuilder().build(
+    new SvgXmlParser().parse(readFileSync(filePath, 'utf8')),
+  );
+  assert.deepEqual(saved.warnings, []);
+  assert.equal(
+    new TreeFormatter().format(saved.document),
+    'svg (100x50)\n'
+    + '├── rect#r1 x=6 y=7 w=10 h=20 fill=#abc stroke=red stroke-width=2\n'
+    + '└── g#g1\n'
+    + '    ├── text#t1 (5,6) "changed"\n'
+    + '    └── circle#c1 cx=7 cy=8 r=9 fill=none',
+  );
+});
+
+test('failed save keeps the read source path and does not lock history', async (t) => {
+  const directory = createTempDir(t);
+  const source = path.join(directory, 'source.svg');
+  const badPath = path.join(directory, 'missing-dir', 'out.svg');
+  writeFileSync(
+    source,
+    '<svg width="10" height="10"><rect id="r1" width="1" height="1"/></svg>',
+    'utf8',
+  );
+
+  const result = await runCli(
+    `read "${source}"\n`
+    + 'create rect r2 0 0 1 1\n'
+    + `save "${badPath}"\n`
+    + 'undo\n'
+    + 'save\n'
+    + 'exit\n',
+  );
+
+  assert.equal(result.code, 0);
+  assert.ok(result.stdout.includes(`error: cannot write file: ${badPath}`));
+  assert.match(result.stdout, /rect#r2 creation undone/);
+  assert.ok(result.stdout.includes(`saved to ${source} (1 element)`));
+});
+
+test('failed read preserves the source path for a later no-argument save', async (t) => {
+  const directory = createTempDir(t);
+  const source = path.join(directory, 'source.svg');
+  const missing = path.join(directory, 'missing.svg');
+  writeFileSync(
+    source,
+    '<svg width="10" height="10"><rect id="r1" width="1" height="1"/></svg>',
+    'utf8',
+  );
+
+  const result = await runCli(
+    `read "${source}"\n`
+    + `read "${missing}"\n`
+    + 'tree\n'
+    + 'save\n'
+    + 'exit\n',
+  );
+
+  assert.equal(result.code, 0);
+  assert.ok(result.stdout.includes(`error: cannot read file: ${missing}`));
+  assert.ok(result.stdout.includes('└── rect#r1 x=0 y=0 w=1 h=1'));
+  assert.ok(result.stdout.includes(`saved to ${source} (1 element)`));
+});
+
+test('replays a representative stage 5 transcript', async (t) => {
+  const directory = createTempDir(t);
+  const source = path.join(directory, 'stage5.svg');
+  writeFileSync(
+    source,
+    '<svg width="40" height="30" viewBox="0 0 40 30">'
+    + '<rect x="0" y="0" width="40" height="30" fill="#fff"/>'
+    + '<g id="g1"><circle id="c1" cx="5" cy="5" r="2"/></g>'
+    + '</svg>',
+    'utf8',
+  );
+
+  const result = await runCli(
+    'init 200 100\n'
+    + 'create rect temp 0 0 10 10\n'
+    + `read "${source}"\n`
+    + 'tree\n'
+    + 'canvas\n'
+    + 'canvas 300 200\n'
+    + 'undo\n'
+    + 'create circle c2 10 10 3\n'
+    + 'tree\n'
+    + 'save\n'
+    + 'undo\n'
+    + 'init 50 60\n'
+    + 'save\n'
+    + 'exit\n',
+  );
+
+  assert.equal(result.code, 0);
+  assert.match(result.stdout, /warning: assigned id rect1 to unnamed <rect>/);
+  assert.ok(result.stdout.includes(`read ${source} (3 elements)`));
+  assert.ok(result.stdout.includes('canvas 40x30\n'));
+  assert.ok(result.stdout.includes('canvas 300x200\n'));
+  assert.equal(
+    (result.stdout.match(/error: undo not allowed after io command/g) ?? []).length,
+    2,
+  );
+  assert.ok(result.stdout.includes(
+    'svg (300x200)\n'
+    + '├── rect#rect1 x=0 y=0 w=40 h=30 fill=#fff\n'
+    + '├── g#g1\n'
+    + '│   └── circle#c1 cx=5 cy=5 r=2\n'
+    + '└── circle#c2 cx=10 cy=10 r=3',
+  ));
+  assert.ok(result.stdout.includes(`saved to ${source} (4 elements)`));
+  assert.match(result.stdout, /canvas 50x60 created/);
+  assert.match(result.stdout, /error: no file path\. use 'save <file\.svg>'/);
+
+  const saved = new SvgDocumentBuilder().build(
+    new SvgXmlParser().parse(readFileSync(source, 'utf8')),
+  );
+  assert.equal(saved.document.width, 300);
+  assert.equal(saved.document.height, 200);
+  assert.deepEqual(
+    saved.document.root.children.map((shape) => shape.id),
+    ['rect1', 'g1', 'c2'],
+  );
 });

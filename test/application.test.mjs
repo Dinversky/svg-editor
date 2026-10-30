@@ -94,3 +94,41 @@ test('checks application state before parsing arguments', () => {
     { message: 'no such shape: missing' },
   );
 });
+
+test('keeps parser and application command registration consistent', () => {
+  const application = new SvgEditorApplication();
+  const parser = new CommandParser();
+  const expected = [
+    'init', 'read', 'canvas', 'create', 'move', 'scale', 'set', 'delete',
+    'group', 'ungroup', 'addto', 'front', 'back', 'undo', 'redo', 'tree',
+    'show', 'save',
+  ];
+  const argsByName = {
+    init: [],
+    read: ['a.svg'],
+    canvas: [],
+    create: ['rect', 'r1', '0', '0', '1', '1'],
+    move: ['r1', '1', '1'],
+    scale: ['r1', '2'],
+    set: ['r1', 'x', '1'],
+    delete: ['r1'],
+    group: ['g1', 'r1'],
+    ungroup: ['g1'],
+    addto: ['g1', 'r1'],
+    front: ['r1'],
+    back: ['r1'],
+    undo: [],
+    redo: [],
+    tree: [],
+    show: ['r1'],
+    save: [],
+  };
+
+  assert.deepEqual(application.commandNames().sort(), [...expected].sort());
+
+  for (const name of expected) {
+    assert.equal(parser.parseCommand(name, argsByName[name]).command, name);
+  }
+
+  assert.equal(application.commandNames().includes('box'), false);
+});

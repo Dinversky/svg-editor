@@ -8,6 +8,10 @@ This iteration provides a minimal SVG document editor with rectangles,
 circles, ellipses, lines, and text. The implemented commands are:
 
 - `init [w] [h]` — create a new canvas; defaults to `800x600`.
+- `read <file.svg>` — read an SVG file as the current document; missing IDs are
+  assigned with warnings, and duplicate IDs reject the whole read.
+- `canvas [w] [h]` — show the current canvas size, or resize it; omitted
+  dimensions keep their current value.
 - `create rect <id> <x> <y> <w> <h> [fill]` — add a rectangle.
 - `create circle <id> <cx> <cy> <r> [fill]` — add a circle.
 - `create ellipse <id> <cx> <cy> <rx> <ry> [fill]` — add an ellipse.
@@ -32,21 +36,27 @@ circles, ellipses, lines, and text. The implemented commands are:
 - `tree [id]` — display the full canvas tree, or only the subtree rooted at
   the given shape/group ID.
 - `show <id>` — display the parent and attributes of a shape or group.
-- `save [file.svg]` — serialize the canvas to SVG and write it to a file.
+- `save [file.svg]` — serialize the canvas to SVG; without a filename, save
+  to the path recorded by the last successful `read`.
 - `undo` / `redo` — undo or redo an edit command.
 - `help` / `exit`.
 
 Edit commands (including `create`) enter one undo unit each. Display commands
 (`tree`, `show`, `help`) do not. `init` replaces the document and clears the
-undo/redo history. After a successful `init` or `save`, `undo` and `redo`
-report `error: undo not allowed after io command` until the next edit command
-succeeds; the edit history itself is preserved across `save`. Empty stacks
-report `error: nothing to undo` or `error: nothing to redo`.
+undo/redo history. After a successful `init`, `read`, or `save`, `undo` and
+`redo` report `error: undo not allowed after io command` until the next edit
+command succeeds; the edit history itself is preserved across `save`. Empty
+stacks report `error: nothing to undo` or `error: nothing to redo`.
 
-Repeating `init` replaces the current document. Because `read` is not
-implemented yet, a newly initialized document has no source path; `save`
-without a filename therefore reports an error. Other shape types, `read`,
-`canvas`, and the `box` plugin are not implemented.
+`read` replaces the current document and records its path. Missing IDs,
+unsupported elements, invalid elements, and `transform` produce documented
+warnings; unsupported attributes are ignored. Unreadable files report
+`error: cannot read file: <path>`, and duplicate IDs report
+`error: id already exists: <id>`. `canvas` without arguments displays the
+current size without locking history; resizing the canvas locks undo/redo until
+the next edit command. `save` without a filename writes to the most recent
+successful `read` path and reports an error if no such path exists. Other shape
+types and the `box` plugin are not implemented.
 
 ## Requirements
 
@@ -114,7 +124,7 @@ The source layout follows the assignment architecture:
 - `src/app/` — application state, command handlers and dispatch, document/history/IO coordination, and tree/show formatting.
 - `src/model/` — `Shape`, `Rect`, `Circle`, `Ellipse`, `Line`, `Text`, `Group`, `Document`, container/ID management, `ShapeFactory`, and `SvgColor`.
 - `src/commands/` — `Command` interface, `CommandRegistry`, `CommandExecutor`, `History`, `CreateCommand`, `GeometryCommand`, `MoveCommand`, `ScaleCommand`, `SetCommand`, `DeleteCommand`, `GroupCommand`, `UngroupCommand`, `AddToCommand`, `FrontCommand`, and `BackCommand`; the application layer uses the registry, executor, and history.
-- `src/io/` — SVG serialization and file writing.
+- `src/io/` — SVG serialization, file reading, and file writing.
 - `src/errors/` — shared `EditorError` type for expected editor errors.
-- `test/` — automated CLI, tokenizer, model, command-registry, history, model-editing, geometry-command, set-command, delete-command, group-command, reorder-command, application, and application-dispatch tests.
+- `test/` — automated CLI, tokenizer, model, command-registry, history, model-editing, geometry-command, set-command, delete-command, group-command, reorder-command, application, application-dispatch, and file-reader tests.
 - `doc/README.md` — architecture and development record.

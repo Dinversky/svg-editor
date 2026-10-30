@@ -101,6 +101,33 @@ export class CommandParser {
     return { width, height };
   }
 
+  public parseRead(args: string[]): string {
+    if (args.length !== 1) {
+      this.failUsage('read <file.svg>');
+    }
+
+    return args[0];
+  }
+
+  public parseCanvas(args: string[]): { width?: number; height?: number } {
+    if (args.length > 2) {
+      this.failUsage('canvas [w] [h]');
+    }
+
+    const width = args.length >= 1 ? this.parseNumber(args[0], 'width') : undefined;
+    const height = args.length >= 2 ? this.parseNumber(args[1], 'height') : undefined;
+
+    if (width !== undefined && width <= 0) {
+      throw new EditorError('width must be positive');
+    }
+
+    if (height !== undefined && height <= 0) {
+      throw new EditorError('height must be positive');
+    }
+
+    return { width, height };
+  }
+
   public parseCreate(args: string[]): ParsedCreate {
     if (args.length === 0) {
       this.failUsage('create <type> <id> [params] [in <group>]');
@@ -174,13 +201,9 @@ export class CommandParser {
     return args[0];
   }
 
-  public parseSave(args: string[]): string {
+  public parseSave(args: string[]): string | undefined {
     if (args.length > 1) {
       this.failUsage('save [file.svg]');
-    }
-
-    if (args.length === 0) {
-      throw new EditorError("no file path. use 'save <file.svg>'");
     }
 
     return args[0];
@@ -275,6 +298,10 @@ export class CommandParser {
     switch (name) {
       case 'init':
         return { command: 'init', ...this.parseInit(args) };
+      case 'read':
+        return { command: 'read', filePath: this.parseRead(args) };
+      case 'canvas':
+        return { command: 'canvas', ...this.parseCanvas(args) };
       case 'create':
         return { command: 'create', ...this.parseCreate(args) };
       case 'move':

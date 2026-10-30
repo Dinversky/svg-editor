@@ -6,8 +6,8 @@ import { ShapeFactory } from './ShapeFactory.js';
 import { ShapeRegistry } from './ShapeRegistry.js';
 
 export class Document {
-  private readonly canvasWidth: number;
-  private readonly canvasHeight: number;
+  private canvasWidth: number;
+  private canvasHeight: number;
   private readonly shapeRegistry: ShapeRegistry;
   private readonly shapeFactory = new ShapeFactory();
   private readonly rootContainer: RootContainer;
@@ -29,6 +29,16 @@ export class Document {
 
   public get height(): number {
     return this.canvasHeight;
+  }
+
+  /** 修改画布尺寸，保留现有图形和 ID 索引。 */
+  public resize(width: number, height: number): void {
+    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+      throw new Error('canvas width and height must be positive');
+    }
+
+    this.canvasWidth = width;
+    this.canvasHeight = height;
   }
 
   public get root(): ShapeContainer {

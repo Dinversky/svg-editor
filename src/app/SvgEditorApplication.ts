@@ -13,8 +13,11 @@ import { ScaleCommand } from '../commands/ScaleCommand.js';
 import { SetCommand } from '../commands/SetCommand.js';
 import { UngroupCommand } from '../commands/UngroupCommand.js';
 import { EditorError } from '../errors/EditorError.js';
+import { SvgDocumentBuilder } from '../io/SvgDocumentBuilder.js';
+import { SvgFileReader } from '../io/SvgFileReader.js';
 import { SvgFileWriter } from '../io/SvgFileWriter.js';
 import { SvgSerializer } from '../io/SvgSerializer.js';
+import { SvgXmlParser } from '../io/SvgXmlParser.js';
 import { Document } from '../model/Document.js';
 import type { AttributeValue, Shape } from '../model/Shape.js';
 import type { ShapeContainer } from '../model/ShapeContainer.js';
@@ -24,12 +27,14 @@ import { ApplicationCommandDispatcher } from './ApplicationCommandDispatcher.js'
 import type {
   AddToRequest,
   BackRequest,
+  CanvasRequest,
   CreateRequest,
   DeleteRequest,
   FrontRequest,
   GroupRequest,
   InitRequest,
   MoveRequest,
+  ReadRequest,
   RedoRequest,
   SaveRequest,
   ScaleRequest,
@@ -122,7 +127,11 @@ export class SvgEditorApplication {
   private readonly showFormatter = new ShowFormatter();
   private readonly svgSerializer = new SvgSerializer();
   private readonly svgFileWriter = new SvgFileWriter();
+  private readonly svgFileReader = new SvgFileReader();
+  private readonly svgXmlParser = new SvgXmlParser();
+  private readonly svgDocumentBuilder = new SvgDocumentBuilder();
   private document: Document | null = null;
+  private sourcePath: string | null = null;
 
   public constructor() {
     this.registerEditCommands();
@@ -133,8 +142,14 @@ export class SvgEditorApplication {
     return this.dispatcher.dispatch(input);
   }
 
+  public commandNames(): string[] {
+    return this.dispatcher.names();
+  }
+
   private registerHandlers(): void {
     this.dispatcher.register<InitRequest>('init', (parse) => this.init(parse));
+    this.dispatcher.register<ReadRequest>('read', (parse) => this.read(parse));
+    this.dispatcher.register<CanvasRequest>('canvas', (parse) => this.canvas(parse));
     this.dispatcher.register<CreateRequest>('create', (parse) => this.create(parse));
     this.dispatcher.register<MoveRequest>('move', (parse) => this.move(parse));
     this.dispatcher.register<ScaleRequest>('scale', (parse) => this.scale(parse));
@@ -156,10 +171,56 @@ export class SvgEditorApplication {
     const request = parse();
 
     this.document = new Document(request.width, request.height);
+    this.sourcePath = null;
     this.history.clear();
     this.history.lock();
     this.feedback.clear();
     return [`canvas ${request.width}x${request.height} created`];
+  }
+
+  private read(parse: () => ReadRequest): readonly string[] {
+    const request = parse();
+    let result: ReturnType<SvgDocumentBuilder['build']>;
+
+    try {
+      const xml = this.svgFileReader.read(request.filePath);
+      const root = this.svgXmlParser.parse(xml);
+      result = this.svgDocumentBuilder.build(root);
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith('id already exists: ')) {
+        throw new EditorError(error.message);
+      }
+
+      throw new EditorError(`cannot read file: ${request.filePath}`);
+    }
+
+    this.document = result.document;
+    this.sourcePath = request.filePath;
+    this.history.clear();
+    this.history.lock();
+    this.feedback.clear();
+    const count = result.document.countShapes();
+    const suffix = count === 1 ? 'element' : 'elements';
+
+    return [
+      ...result.warnings.map((warning) => `warning: ${warning}`),
+      `read ${request.filePath} (${count} ${suffix})`,
+    ];
+  }
+
+  private canvas(parse: () => CanvasRequest): readonly string[] {
+    const document = this.requireDocument();
+    const request = parse();
+
+    if (request.width === undefined && request.height === undefined) {
+      return [`canvas ${document.width}x${document.height}`];
+    }
+
+    const width = request.width ?? document.width;
+    const height = request.height ?? document.height;
+    document.resize(width, height);
+    this.history.lock();
+    return [`canvas ${width}x${height}`];
   }
 
   private create(parse: () => CreateRequest): readonly string[] {
@@ -386,22 +447,28 @@ export class SvgEditorApplication {
   private save(parse: () => SaveRequest): readonly string[] {
     const document = this.requireDocument();
     const request = parse();
+    const filePath = request.filePath ?? this.sourcePath;
+
+    if (filePath === undefined || filePath === null) {
+      throw new EditorError("no file path. use 'save <file.svg>'");
+    }
+
     const content = this.svgSerializer.serialize(document);
 
     try {
-      this.svgFileWriter.write(request.filePath, content);
+      this.svgFileWriter.write(filePath, content);
     } catch {
-      throw new EditorError(`cannot write file: ${request.filePath}`);
+      throw new EditorError(`cannot write file: ${filePath}`);
     }
 
     const count = document.countShapes();
     this.history.lock();
-    return [`saved to ${request.filePath} (${count} element${count === 1 ? '' : 's'})`];
+    return [`saved to ${filePath} (${count} element${count === 1 ? '' : 's'})`];
   }
 
   private assertHistoryUnlocked(): void {
     if (this.history.isLocked) {
-      throw new EditorError('undo not allowed after io command');
+      throw new EditorError('undo/redo not allowed after io command');
     }
   }
 
