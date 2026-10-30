@@ -1,0 +1,96 @@
+import assert from 'node:assert/strict';
+import { createRequire } from 'node:module';
+import { test } from 'node:test';
+
+const require = createRequire(import.meta.url);
+const { SvgEditorApplication } = require('../dist/app/SvgEditorApplication.js');
+const { CommandParser } = require('../dist/cli/CommandParser.js');
+
+function createHarness() {
+  const application = new SvgEditorApplication();
+  const parser = new CommandParser();
+
+  return (name, ...args) => application.execute({
+    name,
+    parse: () => parser.parseCommand(name, args),
+  });
+}
+
+test('runs existing commands through the application layer', () => {
+  const run = createHarness();
+
+  assert.deepEqual(run('init', '20', '10'), ['canvas 20x10 created']);
+  assert.deepEqual(
+    run('create', 'rect', 'r1', '1', '2', '3', '4'),
+    ['rect#r1 created'],
+  );
+  assert.deepEqual(run('tree'), [
+    'svg (20x10)\n└── rect#r1 x=1 y=2 w=3 h=4',
+  ]);
+  assert.deepEqual(run('show', 'r1'), [
+    'rect#r1  parent=svg\n  x=1 y=2 w=3 h=4',
+  ]);
+
+  assert.deepEqual(run('undo'), ['rect#r1 creation undone']);
+  assert.deepEqual(run('tree'), ['svg (20x10)\n(empty)']);
+  assert.deepEqual(run('redo'), ['rect#r1 created']);
+
+  assert.throws(
+    () => run('missing'),
+    { message: 'unknown command: missing' },
+  );
+});
+
+test('move feedback reads model coordinates for every shape type', () => {
+  const run = createHarness();
+
+  run('init', '100', '100');
+  run('create', 'rect', 'r1', '10', '20', '30', '40');
+  run('create', 'circle', 'c1', '5.5', '-2', '3');
+  run('create', 'ellipse', 'e1', '1', '2', '3', '4');
+  run('create', 'text', 't1', '7', '8', 'hello');
+  run('create', 'line', 'l1', '1', '2', '3', '4');
+  run('create', 'g', 'g1');
+
+  assert.deepEqual(run('move', 'r1', '5', '-3'), ['rect#r1 moved to (15,17)']);
+  assert.deepEqual(run('move', 'c1', '2', '3'), ['circle#c1 moved to (7.5,1)']);
+  assert.deepEqual(run('move', 'e1', '-1', '-2'), ['ellipse#e1 moved to (0,0)']);
+  assert.deepEqual(run('move', 't1', '1', '2'), ['text#t1 moved to (8,10)']);
+  assert.deepEqual(run('move', 'l1', '3', '4'), ['line#l1 moved to (4,6)']);
+  assert.deepEqual(run('move', 'g1', '5', '-5'), ['g#g1 moved by (5,-5)']);
+
+  assert.deepEqual(run('undo'), ['g#g1 moved back by (-5,5)']);
+  assert.deepEqual(run('undo'), ['line#l1 moved back to (1,2)']);
+  assert.deepEqual(run('redo'), ['line#l1 moved to (4,6)']);
+
+  assert.deepEqual(run('tree'), [
+    'svg (100x100)\n'
+    + '├── rect#r1 x=15 y=17 w=30 h=40\n'
+    + '├── circle#c1 cx=7.5 cy=1 r=3\n'
+    + '├── ellipse#e1 cx=0 cy=0 rx=3 ry=4\n'
+    + '├── text#t1 (8,10) "hello"\n'
+    + '├── line#l1 (4,6) -> (6,8)\n'
+    + '└── g#g1',
+  ]);
+});
+
+test('checks application state before parsing arguments', () => {
+  const run = createHarness();
+
+  assert.throws(
+    () => run('show'),
+    { message: "no document. use 'init' or 'read' first" },
+  );
+  assert.throws(
+    () => run('move', 'r1'),
+    { message: "no document. use 'init' or 'read' first" },
+  );
+
+  run('init');
+
+  assert.throws(() => run('show'), { message: 'usage: show <id>' });
+  assert.throws(
+    () => run('move', 'missing', '1', '1'),
+    { message: 'no such shape: missing' },
+  );
+});

@@ -1,4 +1,5 @@
 import { EditorError } from '../errors/EditorError.js';
+import type { ApplicationRequest } from '../app/ApplicationRequest.js';
 import type { AttributeValue } from '../model/Shape.js';
 import { SvgColor } from '../model/SvgColor.js';
 import type { ShapeCreation } from '../model/ShapeFactory.js';
@@ -266,6 +267,48 @@ export class CommandParser {
   public parseNoArgs(args: string[], usage: string): void {
     if (args.length !== 0) {
       this.failUsage(usage);
+    }
+  }
+
+  /** 把命令行参数转换为应用层请求；不访问文档，也不执行命令。 */
+  public parseCommand(name: string, args: string[]): ApplicationRequest {
+    switch (name) {
+      case 'init':
+        return { command: 'init', ...this.parseInit(args) };
+      case 'create':
+        return { command: 'create', ...this.parseCreate(args) };
+      case 'move':
+        return { command: 'move', ...this.parseMove(args) };
+      case 'scale':
+        return { command: 'scale', ...this.parseScale(args) };
+      case 'set':
+        return { command: 'set', ...this.parseSet(args) };
+      case 'delete':
+        return { command: 'delete', id: this.parseDelete(args) };
+      case 'group':
+        return { command: 'group', ...this.parseGroup(args) };
+      case 'ungroup':
+        return { command: 'ungroup', id: this.parseUngroup(args) };
+      case 'addto':
+        return { command: 'addto', ...this.parseAddTo(args) };
+      case 'front':
+        return { command: 'front', id: this.parseFront(args) };
+      case 'back':
+        return { command: 'back', id: this.parseBack(args) };
+      case 'undo':
+        this.parseNoArgs(args, 'undo');
+        return { command: 'undo' };
+      case 'redo':
+        this.parseNoArgs(args, 'redo');
+        return { command: 'redo' };
+      case 'tree':
+        return { command: 'tree', id: this.parseTree(args) };
+      case 'show':
+        return { command: 'show', id: this.parseShow(args) };
+      case 'save':
+        return { command: 'save', filePath: this.parseSave(args) };
+      default:
+        throw new EditorError(`unknown command: ${name}`);
     }
   }
 

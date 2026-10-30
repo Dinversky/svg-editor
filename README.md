@@ -110,10 +110,11 @@ Input rules:
 
 The source layout follows the assignment architecture:
 
-- `src/cli/` — entry point, interactive loop, tokenization, command parsing, and tree output.
+- `src/cli/` — entry point, interactive loop, tokenization, command parsing into typed requests, and output printing.
+- `src/app/` — application state, command handlers and dispatch, document/history/IO coordination, and tree/show formatting.
 - `src/model/` — `Shape`, `Rect`, `Circle`, `Ellipse`, `Line`, `Text`, `Group`, `Document`, container/ID management, `ShapeFactory`, and `SvgColor`.
-- `src/commands/` — `Command` interface, `CommandRegistry`, `CommandExecutor`, `History`, `CreateCommand`, `GeometryCommand`, `MoveCommand`, `ScaleCommand`, `SetCommand`, `DeleteCommand`, `GroupCommand`, `UngroupCommand`, `AddToCommand`, `FrontCommand`, and `BackCommand`; the CLI uses the registry, executor, and history.
+- `src/commands/` — `Command` interface, `CommandRegistry`, `CommandExecutor`, `History`, `CreateCommand`, `GeometryCommand`, `MoveCommand`, `ScaleCommand`, `SetCommand`, `DeleteCommand`, `GroupCommand`, `UngroupCommand`, `AddToCommand`, `FrontCommand`, and `BackCommand`; the application layer uses the registry, executor, and history.
 - `src/io/` — SVG serialization and file writing.
 - `src/errors/` — shared `EditorError` type for expected editor errors.
-- `test/` — automated CLI, tokenizer, model, command-registry, history, model-editing, geometry-command, set-command, delete-command, group-command, and reorder-command tests.
+- `test/` — automated CLI, tokenizer, model, command-registry, history, model-editing, geometry-command, set-command, delete-command, group-command, reorder-command, application, and application-dispatch tests.
 - `doc/README.md` — architecture and development record.
