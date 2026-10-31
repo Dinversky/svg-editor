@@ -43,8 +43,8 @@ circles, ellipses, lines, and text. The implemented commands are:
 
 Edit commands (including `create`) enter one undo unit each. Display commands
 (`tree`, `show`, `help`) do not. `init` replaces the document and clears the
-undo/redo history. After a successful `init`, `read`, or `save`, `undo` and
-`redo` report `error: undo/redo not allowed after io command` until the next edit
+undo/redo history. After a successful `init`, `read`, `save`, or a resizing
+`canvas`, `undo` and `redo` report `error: undo/redo not allowed after io command` until the next edit
 command succeeds; the edit history itself is preserved across `save`. Empty
 stacks report `error: nothing to undo` or `error: nothing to redo`.
 
@@ -124,7 +124,7 @@ The source layout follows the assignment architecture:
 - `src/app/` — application state, command handlers and dispatch, document/history/IO coordination, and tree/show formatting.
 - `src/model/` — `Shape`, `Rect`, `Circle`, `Ellipse`, `Line`, `Text`, `Group`, `Document`, container/ID management, `ShapeFactory`, and `SvgColor`.
 - `src/commands/` — `Command` interface, `CommandRegistry`, `CommandExecutor`, `History`, `CreateCommand`, `GeometryCommand`, `MoveCommand`, `ScaleCommand`, `SetCommand`, `DeleteCommand`, `GroupCommand`, `UngroupCommand`, `AddToCommand`, `FrontCommand`, and `BackCommand`; the application layer uses the registry, executor, and history.
-- `src/io/` — SVG serialization, file reading, and file writing.
+- `src/io/` — SVG serialization, XML parsing and document building, file reading, and file writing.
 - `src/errors/` — shared `EditorError` type for expected editor errors.
-- `test/` — automated CLI, tokenizer, model, command-registry, history, model-editing, geometry-command, set-command, delete-command, group-command, reorder-command, application, application-dispatch, and file-reader tests.
+- `test/` — eight automated test files: CLI end-to-end, tokenizer, command registry, history and IO lock, model editing APIs, all command objects, application dispatch and behavior, and SVG read/write.
 - `doc/README.md` — architecture and development record.
