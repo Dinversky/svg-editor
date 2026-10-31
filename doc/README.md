@@ -1,6 +1,6 @@
 # SVG Editor 设计与过程文档
 
-本文件记录架构方案、关键决策、过程记录、一致性自查、质量保证与未完成事项。内容对应提交 `336620f`（`test: 精简测试文件并同步IO锁错误文案`），`main` 领先 `origin/main` 1 个提交。
+仓库地址：[https://github.com/Dinversky/svg-editor.git](https://github.com/Dinversky/svg-editor.git)
 
 ## 一、架构方案
 

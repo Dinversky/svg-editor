@@ -1,69 +1,46 @@
 # SVG Editor
 
-A TypeScript command-line SVG editor, developed incrementally for Lab1.
+面向 Lab1 逐步开发的 TypeScript 命令行 SVG 编辑器。
 
-## Current scope
+## 当前范围
 
-This iteration provides a minimal SVG document editor with rectangles,
-circles, ellipses, lines, and text. The implemented commands are:
+本迭代提供一个最小可用的 SVG 文档编辑器，支持矩形、圆形、椭圆、直线和文本。已实现的命令：
 
-- `init [w] [h]` — create a new canvas; defaults to `800x600`.
-- `read <file.svg>` — read an SVG file as the current document; missing IDs are
-  assigned with warnings, and duplicate IDs reject the whole read.
-- `canvas [w] [h]` — show the current canvas size, or resize it; omitted
-  dimensions keep their current value.
-- `create rect <id> <x> <y> <w> <h> [fill]` — add a rectangle.
-- `create circle <id> <cx> <cy> <r> [fill]` — add a circle.
-- `create ellipse <id> <cx> <cy> <rx> <ry> [fill]` — add an ellipse.
-- `create line <id> <x1> <y1> <x2> <y2> [stroke]` — add a line.
-- `create text <id> <x> <y> "content"` — add a text element.
-- `create g <id>` — add an empty group.
-- All `create` commands accept an optional trailing `in <groupId>` to add
-  the new shape to an existing group; without it the shape is added to the root.
-- Color parameters (`fill`/`stroke`) accept SVG color keywords (e.g. `red`,
-  case-insensitive) and 3/6-digit hex forms (`#fff`, `#ff0000`); invalid colors
-  are rejected with a single-line error.
-- `move <id> <dx> <dy>` — move a shape or group.
-- `scale <id> <factor>` — scale the geometry of a shape or group.
-- `set <id> <attr> <value>` — set a supported geometry, text, or style attribute.
-- `delete <id>` — delete a shape or a group with all of its descendants.
-- `group <newGid> <id1> <id2>...` — group existing shapes; children keep the
-  listed order and the new group is inserted at the first selected shape's position.
-- `ungroup <gid>` — dissolve a nested group and promote its children in place.
-  Root-level groups cannot be ungrouped.
-- `addto <gid> <id>` — move an existing shape into a group as its last child.
-- `front <id>` / `back <id>` — move a shape to the visual front/back among its siblings.
-- `tree [id]` — display the full canvas tree, or only the subtree rooted at
-  the given shape/group ID.
-- `show <id>` — display the parent and attributes of a shape or group.
-- `save [file.svg]` — serialize the canvas to SVG; without a filename, save
-  to the path recorded by the last successful `read`.
-- `undo` / `redo` — undo or redo an edit command.
-- `help` / `exit`.
+- `init [w] [h]` — 新建画布，默认 `800x600`。
+- `read <file.svg>` — 读取 SVG 文件作为当前文档；缺失 ID 会自动补齐并给出警告，重复 ID 会导致整次读取失败。
+- `canvas [w] [h]` — 显示画布尺寸，或修改尺寸；省略的维度保持当前值。
+- `create rect <id> <x> <y> <w> <h> [fill]` — 添加矩形。
+- `create circle <id> <cx> <cy> <r> [fill]` — 添加圆形。
+- `create ellipse <id> <cx> <cy> <rx> <ry> [fill]` — 添加椭圆。
+- `create line <id> <x1> <y1> <x2> <y2> [stroke]` — 添加直线。
+- `create text <id> <x> <y> "content"` — 添加文本。
+- `create g <id>` — 添加空分组。
+- 所有 `create` 命令支持可选的尾部 `in <groupId>`，把新图形加入已有分组；省略时加入根容器。
+- 颜色参数（`fill`/`stroke`）接受 SVG 颜色关键字（如 `red`，大小写不敏感）与 3/6 位十六进制（`#fff`、`#ff0000`）；非法颜色以单行错误提示拒绝。
+- `move <id> <dx> <dy>` — 平移图形或分组。
+- `scale <id> <factor>` — 缩放图形或分组的几何尺寸。
+- `set <id> <attr> <value>` — 修改支持的几何、文本或样式属性。
+- `delete <id>` — 删除图形，或删除分组及其全部后代。
+- `group <newGid> <id1> <id2>...` — 把已有图形组合为新分组；子节点保持命令中的顺序，新分组插入到第一个被选图形的原位置。
+- `ungroup <gid>` — 拆解嵌套分组，并把子节点原地提升到其父容器。根级分组不可拆解。
+- `addto <gid> <id>` — 把已有图形移动到目标分组末尾。
+- `front <id>` / `back <id>` — 把图形移到同级的最上层/最下层。
+- `tree [id]` — 显示完整画布树，或只显示以指定图形/分组 ID 为根的子树。
+- `show <id>` — 显示图形或分组的父容器与属性明细。
+- `save [file.svg]` — 把画布序列化为 SVG；省略文件名时保存到最近一次成功 `read` 记录的路径。
+- `undo` / `redo` — 撤销或重做编辑命令。
+- `help` / `exit`。
 
-Edit commands (including `create`) enter one undo unit each. Display commands
-(`tree`, `show`, `help`) do not. `init` replaces the document and clears the
-undo/redo history. After a successful `init`, `read`, `save`, or a resizing
-`canvas`, `undo` and `redo` report `error: undo/redo not allowed after io command` until the next edit
-command succeeds; the edit history itself is preserved across `save`. Empty
-stacks report `error: nothing to undo` or `error: nothing to redo`.
+每条编辑命令（含 `create`）构成一个撤销单元，显示类命令（`tree`、`show`、`help`）不进入历史。`init` 替换文档并清空 undo/redo 历史。成功的 `init`、`read`、`save` 或修改尺寸的 `canvas` 之后，`undo` 与 `redo` 会报 `error: undo/redo not allowed after io command`，直到下一条编辑命令成功执行；编辑历史在 `save` 前后保留。空栈分别报 `error: nothing to undo` 与 `error: nothing to redo`。
 
-`read` replaces the current document and records its path. Missing IDs,
-unsupported elements, invalid elements, and `transform` produce documented
-warnings; unsupported attributes are ignored. Unreadable files report
-`error: cannot read file: <path>`, and duplicate IDs report
-`error: id already exists: <id>`. `canvas` without arguments displays the
-current size without locking history; resizing the canvas locks undo/redo until
-the next edit command. `save` without a filename writes to the most recent
-successful `read` path and reports an error if no such path exists. Other shape
-types and the `box` plugin are not implemented.
+`read` 替换当前文档并记录其路径。缺失 ID、不支持的元素、无效元素与 `transform` 会产生文档化的警告；不支持的属性被忽略。文件不可读时报 `error: cannot read file: <path>`，重复 ID 报 `error: id already exists: <id>`。不带参数的 `canvas` 只显示当前尺寸，不锁定历史；修改尺寸会锁定 undo/redo，直到下一条编辑命令。不带文件名的 `save` 写入最近一次成功 `read` 的路径，无该路径时报错。其他图形类型与 `box` 插件尚未实现。
 
-## Requirements
+## 环境要求
 
-- Node.js 22 or later (verified with Node.js 22.22.2)
+- Node.js 22 或更高版本（已在 Node.js 22.22.2 验证）
 - npm
 
-## Development
+## 开发
 
 ```text
 npm install
@@ -72,16 +49,15 @@ npm test
 npm run cli
 ```
 
-`npm run cli` builds the project and starts the interactive editor.
-`npm start` starts the previously built CLI without rebuilding.
+`npm run cli` 先构建再启动交互式编辑器；`npm start` 直接运行上次构建的 CLI。
 
-## Usage
+## 使用
 
 ```text
 npm run cli
 ```
 
-At the `svg>` prompt:
+在 `svg>` 提示符下输入：
 
 ```text
 init 800 600
@@ -96,35 +72,27 @@ save demo.svg
 exit
 ```
 
-The last command writes `demo.svg` in the current working directory. Enter
-`help` to list commands or `exit` to quit.
+最后一条命令会在当前工作目录写出 `demo.svg`。输入 `help` 查看命令列表，输入 `exit` 退出。
 
-Input rules:
+输入规则：
 
-- Arguments are separated by whitespace.
-- Use double quotes for an argument containing spaces, for example
-  `save "my drawing.svg"`.
-- A line whose first non-whitespace character is `#` is a comment. A value
-  such as `#fff` inside a command remains a normal argument; inline comments
-  are not supported.
+- 参数以空白分隔。
+- 含空格的参数用双引号包裹，例如 `save "my drawing.svg"`。
+- 首个非空白字符为 `#` 的行是整行注释；命令中的 `#fff` 等值仍作为普通参数，行内注释不受支持。
 
-## Manual verification
+## 手工验证
 
-1. Run `npm run cli`.
-2. Enter the commands shown above.
-3. Open the generated `demo.svg` in Chrome or Edge. A blue rectangle at
-   `(100, 120)` with size `200x80`, a red circle centered at `(100, 100)`
-   with radius `20`, a green ellipse centered at `(300, 150)` with
-   radii `80x50`, a black line from `(100, 250)` to `(700, 250)`, and
-   black text `Hello SVG` at `(40, 300)` should be visible.
+1. 运行 `npm run cli`。
+2. 依次输入上面的命令。
+3. 在 Chrome 或 Edge 中打开生成的 `demo.svg`：应看到位于 `(100, 120)`、尺寸 `200x80` 的蓝色矩形，圆心 `(100, 100)`、半径 `20` 的红色圆形，圆心 `(300, 150)`、半径 `80x50` 的绿色椭圆，从 `(100, 250)` 到 `(700, 250)` 的黑色直线，以及位于 `(40, 300)` 的黑色文本 `Hello SVG`。
 
-The source layout follows the assignment architecture:
+源码布局遵循作业架构：
 
-- `src/cli/` — entry point, interactive loop, tokenization, command parsing into typed requests, and output printing.
-- `src/app/` — application state, command handlers and dispatch, document/history/IO coordination, and tree/show formatting.
-- `src/model/` — `Shape`, `Rect`, `Circle`, `Ellipse`, `Line`, `Text`, `Group`, `Document`, container/ID management, `ShapeFactory`, and `SvgColor`.
-- `src/commands/` — `Command` interface, `CommandRegistry`, `CommandExecutor`, `History`, `CreateCommand`, `GeometryCommand`, `MoveCommand`, `ScaleCommand`, `SetCommand`, `DeleteCommand`, `GroupCommand`, `UngroupCommand`, `AddToCommand`, `FrontCommand`, and `BackCommand`; the application layer uses the registry, executor, and history.
-- `src/io/` — SVG serialization, XML parsing and document building, file reading, and file writing.
-- `src/errors/` — shared `EditorError` type for expected editor errors.
-- `test/` — eight automated test files: CLI end-to-end, tokenizer, command registry, history and IO lock, model editing APIs, all command objects, application dispatch and behavior, and SVG read/write.
-- `doc/README.md` — architecture and development record.
+- `src/cli/` — 入口、交互循环、词法切分、把命令解析为类型化请求，以及输出打印。
+- `src/app/` — 应用状态、命令处理器与分发、文档/历史/IO 协调，以及 tree/show 格式化。
+- `src/model/` — `Shape`、`Rect`、`Circle`、`Ellipse`、`Line`、`Text`、`Group`、`Document`、容器与 ID 管理、`ShapeFactory` 和 `SvgColor`。
+- `src/commands/` — `Command` 接口、`CommandRegistry`、`CommandExecutor`、`History`、`CreateCommand`、`GeometryCommand`、`MoveCommand`、`ScaleCommand`、`SetCommand`、`DeleteCommand`、`GroupCommand`、`UngroupCommand`、`AddToCommand`、`FrontCommand` 与 `BackCommand`；应用层使用注册表、执行器与历史。
+- `src/io/` — SVG 序列化、XML 解析与文档构建、文件读取与写入。
+- `src/errors/` — 共享的 `EditorError` 错误类型。
+- `test/` — 8 个自动化测试文件：CLI 端到端、词法、命令注册表、历史与 IO 锁、模型编辑 API、全部命令对象、应用层分发与行为、SVG 读写。
+- `doc/README.md` — 架构与开发过程记录。
